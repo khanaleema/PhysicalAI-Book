@@ -1,0 +1,129 @@
+.userMenu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.signInButton,
+.signUpButton {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.signInButton {
+  color: #667eea;
+  border: 2px solid #667eea;
+  background: transparent;
+}
+
+.signInButton:hover {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.signUpButton {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+}
+
+.signUpButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.userInfo:hover {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.userName {
+  font-weight: 600;
+  color: #333;
+}
+
+[data-theme='dark'] .userName {
+  color: #e0e0e0;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+[data-theme='dark'] .dropdown {
+  background: #2d2d2d;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.dropdownItem {
+  padding: 1rem;
+  display: block;
+  text-decoration: none;
+  color: #333;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+[data-theme='dark'] .dropdownItem {
+  color: #e0e0e0;
+}
+
+.dropdownItem:hover {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.email {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+  font-weight: normal;
+}
+
+[data-theme='dark'] .email {
+  color: #999;
+}
+
+.divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 0.5rem 0;
+}
+
+[data-theme='dark'] .divider {
+  background: #444;
+}
+

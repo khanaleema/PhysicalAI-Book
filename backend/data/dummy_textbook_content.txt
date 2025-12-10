@@ -1,0 +1,7 @@
+# Physical AI & Humanoid Robotics Textbook - Dummy Content
+
+## Chapter 1: Introduction to Physical AI
+Physical AI refers to intelligent systems that interact with the physical world. Unlike purely software-based AI, physical AI systems, such as robots, have a body and sensors that allow them to perceive and act in their environment.
+
+## Chapter 2: Basics of Humanoid Robotics
+Humanoid robots are robots with their overall body shape built to resemble the human body. They typically have a torso, a head, two arms, and two legs. They are designed to mimic human movements and interactions.

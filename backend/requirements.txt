@@ -1,0 +1,33 @@
+fastapi==0.104.1
+uvicorn==0.24.0.post1
+pydantic>=2.5.2,<3.0.0
+numpy>=2.0.0  # Python 3.13 compatible - MUST use >=2.0.0 for Python 3.13 (pre-built wheels available)
+python-dotenv==1.0.0
+python-multipart==0.0.6
+pyjwt==2.8.0
+email-validator==2.1.0
+
+# OpenAI and related (Agent SDK features built-in)
+openai>=1.24.0,<2.0.0  # Includes Agent SDK features (tools, function calling, streaming)
+tiktoken>=0.7,<1
+
+# Google AI
+google-generativeai==0.3.2
+
+# Database
+qdrant-client>=1.7.1  # Python 3.13 compatible
+psycopg2-binary>=2.9.9  # Use latest for Python 3.13 support
+
+# Groq - using requests library for HTTP calls
+# groq library is optional now - we use requests directly
+httpx>=0.25.0
+requests>=2.31.0
+
+# FastEmbedding - Fast and lightweight embeddings (replaces sentence-transformers)
+# CRITICAL: Must be installed for embeddings to work
+fastembed>=0.2.0
+huggingface_hub==0.36.0
+
+
+# NOTE: sentence-transformers is REMOVED - using fastembed instead
+# Do NOT install sentence-transformers - it causes import errors with huggingface_hub
