@@ -14,6 +14,10 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build Docusaurus
@@ -38,7 +42,7 @@ jobs:
       - name: Build website
         run: npm run build
         env:
-git           REACT_APP_API_URL: ${{ secrets.API_URL || 'https://aleemakhan-ai-book-be.hf.space' }}
+          REACT_APP_API_URL: ${{ secrets.API_URL || 'https://aleemakhan-ai-book-be.hf.space' }}
           API_URL: ${{ secrets.API_URL || 'https://aleemakhan-ai-book-be.hf.space' }}
           GITHUB_PAGES_URL: https://khanaleema.github.io
           GITHUB_PAGES_BASE_URL: /PhysicalAI-Book/
