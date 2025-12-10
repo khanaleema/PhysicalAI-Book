@@ -298,26 +298,53 @@ class VectorDBClient:
                 pass
             
             # Query points using the correct Qdrant API
-            # Use search() method (classic API) or query() method (new API)
+            # Try different methods based on client version and mixins
+            results = []
+            
+            # Method 1: Try query_points with vector directly (standard API)
             try:
-                # Try new query() API first (Qdrant 1.7+)
-                query_result = self.client.query(
+                from qdrant_client.models import Query, VectorInput
+                query_result = self.client.query_points(
                     collection_name=self.collection_name,
-                    query=query_embedding,  # Direct vector list
+                    query=Query(
+                        vector=VectorInput(vector=query_embedding)
+                    ),
                     limit=top_k,
-                    query_filter=query_filter
+                    query_filter=query_filter,
+                    with_payload=True
                 )
-                # New API returns list directly
-                results = query_result if isinstance(query_result, list) else query_result.points if hasattr(query_result, 'points') else []
-            except AttributeError:
-                # Fallback to classic search() API
-                query_result = self.client.search(
-                    collection_name=self.collection_name,
-                    query_vector=query_embedding,  # Direct vector list
-                    limit=top_k,
-                    query_filter=query_filter
-                )
-                results = query_result if isinstance(query_result, list) else []
+                results = query_result.points if hasattr(query_result, 'points') else []
+            except (AttributeError, TypeError, ImportError) as e1:
+                # Method 2: Try query_points with vector as list (simpler format)
+                try:
+                    query_result = self.client.query_points(
+                        collection_name=self.collection_name,
+                        query=query_embedding,  # Direct vector list
+                        limit=top_k,
+                        query_filter=query_filter,
+                        with_payload=True
+                    )
+                    results = query_result.points if hasattr(query_result, 'points') else []
+                except (AttributeError, TypeError) as e2:
+                    # Method 3: Try search() method (classic API)
+                    try:
+                        query_result = self.client.search(
+                            collection_name=self.collection_name,
+                            query_vector=query_embedding,
+                            limit=top_k,
+                            query_filter=query_filter,
+                            with_payload=True
+                        )
+                        results = query_result if isinstance(query_result, list) else []
+                    except AttributeError as e3:
+                        # Method 4: query() method not suitable - it requires query_text when FastEmbedding mixin is present
+                        # So we'll raise an error with helpful message
+                        raise ValueError(
+                            f"Qdrant client API not compatible. Tried: query_points, search. "
+                            f"Errors: {e1}, {e2}, {e3}. "
+                            f"Note: If using FastEmbedding mixin, use query_points() or search() with vector, not query() with text. "
+                            f"Please check Qdrant client version and API compatibility."
+                        )
             
             chunks = []
             for result in results:
