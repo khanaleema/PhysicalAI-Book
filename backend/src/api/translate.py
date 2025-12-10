@@ -3,6 +3,10 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 
+# CRITICAL: Remove proxy env vars BEFORE importing google.generativeai
+for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
+    os.environ.pop(key, None)
+
 router = APIRouter(prefix="/translate", tags=["translate"])
 
 class TranslateRequest(BaseModel):
@@ -19,6 +23,10 @@ def translate_content(request: TranslateRequest):
             raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
         
         # Use Gemini API
+        # Ensure proxy vars are removed before import
+        for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
+            os.environ.pop(key, None)
+        
         import google.generativeai as genai
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
