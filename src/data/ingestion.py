@@ -2,7 +2,7 @@ import os
 import sys
 from typing import List, Optional
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, Query, VectorInput
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.models.schemas import SourceDocument, TextChunk
 from dotenv import load_dotenv
@@ -288,7 +288,7 @@ class VectorDBClient:
             print(f"Upserted {len(points)} chunks into vector DB")
 
     def retrieve_relevant_chunks(self, query_embedding: List[float], top_k: int = 5, selected_text: Optional[str] = None) -> List[TextChunk]:
-        """Retrieves relevant chunks based on a query embedding."""
+        """Retrieves relevant chunks based on a query embedding using Qdrant Universal Query API."""
         try:
             # If selected text is provided, search only in that context
             query_filter = None
@@ -297,54 +297,21 @@ class VectorDBClient:
                 # This is a simplified approach - in production, you might want more sophisticated filtering
                 pass
             
-            # Query points using the correct Qdrant API
-            # Try different methods based on client version and mixins
-            results = []
+            # Use Qdrant Query API - query() method (introduced in version 1.10.0)
+            # This is the primary endpoint for retrieving points based on a query
+            # For vector queries, construct a Query object with VectorInput
+            query_result = self.client.query(
+                collection_name=self.collection_name,
+                query=Query(
+                    vector=VectorInput(vector=query_embedding)
+                ),
+                limit=top_k,
+                query_filter=query_filter,
+                with_payload=True
+            )
             
-            # Method 1: Try query_points with vector directly (standard API)
-            try:
-                from qdrant_client.models import Query, VectorInput
-                query_result = self.client.query_points(
-                    collection_name=self.collection_name,
-                    query=Query(
-                        vector=VectorInput(vector=query_embedding)
-                    ),
-                    limit=top_k,
-                    query_filter=query_filter,
-                    with_payload=True
-                )
-                results = query_result.points if hasattr(query_result, 'points') else []
-            except (AttributeError, TypeError, ImportError) as e1:
-                # Method 2: Try query_points with vector as list (simpler format)
-                try:
-                    query_result = self.client.query_points(
-                        collection_name=self.collection_name,
-                        query=query_embedding,  # Direct vector list
-                        limit=top_k,
-                        query_filter=query_filter,
-                        with_payload=True
-                    )
-                    results = query_result.points if hasattr(query_result, 'points') else []
-                except (AttributeError, TypeError) as e2:
-                    # Method 3: Try search() method (classic API)
-                    try:
-                        query_result = self.client.search(
-                            collection_name=self.collection_name,
-                            query_vector=query_embedding,
-                            limit=top_k,
-                            query_filter=query_filter,
-                            with_payload=True
-                        )
-                        results = query_result if isinstance(query_result, list) else []
-                    except AttributeError as e3:
-                        # Method 4: query() method not suitable - it requires query_text when FastEmbedding mixin is present
-                        # So we'll raise an error with helpful message
-                        raise ValueError(
-                            f"Qdrant client API not compatible. Tried: query_points, search. "
-                            f"Errors: {e1}, {e2}, {e3}. "
-                            f"Note: If using FastEmbedding mixin, use query_points() or search() with vector, not query() with text. "
-                            f"Please check Qdrant client version and API compatibility."
-                        )
+            # query() returns a QueryResponse object with .points attribute
+            results = query_result.points if hasattr(query_result, 'points') else []
             
             chunks = []
             for result in results:

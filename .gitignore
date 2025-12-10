@@ -20,6 +20,7 @@ HF_ENV_VARS.txt
 .idea/
 *.swp
 *.swo
+.cursor/mcp.json
 
 # OS
 .DS_Store
