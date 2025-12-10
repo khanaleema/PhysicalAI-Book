@@ -62,10 +62,8 @@ def print_env_status():
     env_vars = {
         "QDRANT_URL": os.getenv("QDRANT_URL"),
         "QDRANT_API_KEY": "SET" if os.getenv("QDRANT_API_KEY") else "NOT SET",
-        "GROQ_API_KEY": "SET" if os.getenv("GROQ_API_KEY") else "NOT SET",
         "GEMINI_API_KEY": "SET" if os.getenv("GEMINI_API_KEY") else "NOT SET",
-        "OPENAI_API_KEY": "SET" if os.getenv("OPENAI_API_KEY") else "NOT SET",
-        "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "NOT SET"),
+        "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "gemini"),
         "EMBEDDING_PROVIDER": os.getenv("EMBEDDING_PROVIDER", "NOT SET"),
         "EMBEDDING_MODEL": os.getenv("EMBEDDING_MODEL", "NOT SET"),
     }
@@ -194,7 +192,7 @@ async def query_chatbot(user_query: UserQuery):
         if not _vector_db_client:
             error_detail += "Vector DB connection failed. Check QDRANT_URL and QDRANT_API_KEY environment variables."
         elif not _llm_provider:
-            error_detail += "LLM Provider failed. Check your LLM API keys (GROQ_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY)."
+            error_detail += "LLM Provider failed. Check your GEMINI_API_KEY."
         else:
             error_detail += "Unknown initialization error. Check backend logs."
         raise HTTPException(status_code=503, detail=error_detail)
@@ -252,9 +250,7 @@ async def health_check():
     env_status = {
         "QDRANT_URL": bool(os.getenv("QDRANT_URL")),
         "QDRANT_API_KEY": bool(os.getenv("QDRANT_API_KEY")),
-        "GROQ_API_KEY": bool(os.getenv("GROQ_API_KEY")),
         "GEMINI_API_KEY": bool(os.getenv("GEMINI_API_KEY")),
-        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
         "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "not_set"),
         "EMBEDDING_PROVIDER": os.getenv("EMBEDDING_PROVIDER", "not_set"),
     }
