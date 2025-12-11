@@ -13,7 +13,10 @@ from src.data.ingestion import VectorDBClient
 from src.core.database import Database
 from src.api.auth import router as auth_router
 from src.api.translate import router as translate_router
-# Note: personalize module exists but is not imported here (placeholder for future use)
+try:
+    from src.api.personalize import router as personalize_router
+except ImportError:
+    personalize_router = None
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,6 +44,8 @@ app.add_middleware(
 # Include routers - Database-based auth (requires DATABASE_URL)
 app.include_router(auth_router)
 app.include_router(translate_router)
+if personalize_router:
+    app.include_router(personalize_router)
 
 # Initialize RAG components with retry logic and lazy initialization
 import time
