@@ -4,7 +4,6 @@ This file is used by Hugging Face Spaces to run the FastAPI application.
 """
 import os
 import sys
-import importlib.util
 
 # CRITICAL: Remove env vars BEFORE any other imports
 for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
@@ -14,45 +13,18 @@ for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, backend_dir)
 
-# CRITICAL: Register ingestion module BEFORE any other imports try to use it
-# This fixes the import error in rag_pipeline.py and other modules
-import importlib.util
-ingestion_path = os.path.join(backend_dir, 'src', 'data', 'ingestion.py')
-
-if os.path.exists(ingestion_path):
-    try:
-        spec = importlib.util.spec_from_file_location("src.data.ingestion", ingestion_path)
-        ingestion_module = importlib.util.module_from_spec(spec)
-        # Register in sys.modules so other imports can find it
-        sys.modules['src.data.ingestion'] = ingestion_module
-        sys.modules['src.data'] = type(sys)('src.data')  # Create parent package
-        sys.modules['src.data'].ingestion = ingestion_module  # Add ingestion to parent
-        spec.loader.exec_module(ingestion_module)
-        print("✅ Ingestion module registered successfully")
-    except Exception as e:
-        print(f"⚠️ Warning: Could not pre-register ingestion module: {e}")
-else:
-    print(f"⚠️ Warning: ingestion.py not found at {ingestion_path}")
-
 # Verify model loading before starting app
 print("=" * 50)
 print("Checking embedding model configuration...")
 print("=" * 50)
 
-# Now use the pre-registered module directly (no import needed)
+# Import ingestion module normally - let Python handle it
 try:
-    # Get the pre-registered module
-    ingestion = sys.modules.get('src.data.ingestion')
-    if not ingestion:
-        # Try to import from src.data (should work after __init__.py loads it)
-        try:
-            from src.data import ingestion
-        except ImportError:
-            raise ImportError("Ingestion module not available - check __init__.py")
+    from src.data import ingestion
     
-    EMBEDDING_PROVIDER = ingestion.EMBEDDING_PROVIDER
-    EMBEDDING_MODEL = ingestion.EMBEDDING_MODEL
-    hf_model = ingestion.hf_model
+    EMBEDDING_PROVIDER = getattr(ingestion, 'EMBEDDING_PROVIDER', 'huggingface')
+    EMBEDDING_MODEL = getattr(ingestion, 'EMBEDDING_MODEL', 'BAAI/bge-small-en-v1.5')
+    hf_model = getattr(ingestion, 'hf_model', None)
     
     print(f"✅ Embedding provider: {EMBEDDING_PROVIDER}")
     print(f"✅ Embedding model: {EMBEDDING_MODEL}")
@@ -75,7 +47,7 @@ try:
     else:
         print(f"✅ Using {EMBEDDING_PROVIDER} embedding provider")
 except Exception as e:
-    print(f"❌ ERROR importing ingestion module: {e}")
+    print(f"⚠️ WARNING: Could not check embedding configuration: {e}")
     import traceback
     traceback.print_exc()
 

@@ -306,7 +306,11 @@ class VectorDBClient:
             print(f"Upserted {len(points)} chunks into vector DB")
 
     def retrieve_relevant_chunks(self, query_embedding: List[float], top_k: int = 5, selected_text: Optional[str] = None) -> List[TextChunk]:
-        """Retrieves relevant chunks based on a query embedding using Qdrant Universal Query API."""
+        """Retrieves relevant chunks based on a query embedding using Qdrant Query API.
+        
+        According to Qdrant documentation: https://qdrant.tech/documentation/concepts/search/
+        Use query_points() with a direct vector for nearest neighbors search.
+        """
         try:
             # If selected text is provided, search only in that context
             query_filter = None
@@ -315,31 +319,53 @@ class VectorDBClient:
                 # This is a simplified approach - in production, you might want more sophisticated filtering
                 pass
             
-            # Use Qdrant search() method - the standard and most compatible API
-            # This works across all qdrant-client versions and doesn't require Query/VectorInput models
-            query_result = self.client.search(
+            # Use Qdrant Query API - query_points() with direct vector
+            # Documentation: https://qdrant.tech/documentation/concepts/search/
+            # Python example: client.query_points(collection_name="...", query=[0.2, 0.1, 0.9, 0.7])
+            query_result = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_embedding,
+                query=query_embedding,  # Direct vector list for nearest neighbors search
                 limit=top_k,
                 query_filter=query_filter,
-                with_payload=True
+                with_payload=True,
+                with_vectors=False  # We don't need vectors in response
             )
             
-            # search() returns a list of ScoredPoint objects directly
-            results = query_result if isinstance(query_result, list) else []
+            # Extract points from query_result
+            # query_points() returns a QueryResponse object with a 'points' attribute
+            # According to Qdrant Python client, query_points returns a QueryResponse with .points attribute
+            if hasattr(query_result, 'points'):
+                results = query_result.points
+            elif isinstance(query_result, (list, tuple)):
+                # Handle tuple/list response format (points, next_page_offset)
+                results = query_result[0] if len(query_result) > 0 and isinstance(query_result[0], list) else query_result
+            else:
+                results = []
             
             chunks = []
             for result in results:
-                # Handle both new and old API response formats
+                # Handle Qdrant Point/ScoredPoint objects
                 if hasattr(result, 'payload'):
                     payload = result.payload
+                elif hasattr(result, 'id'):
+                    # It's a Point object, get payload
+                    payload = getattr(result, 'payload', {})
                 elif isinstance(result, dict):
                     payload = result.get('payload', result)
                 else:
                     payload = {}
                 
+                # Get point ID
+                point_id = None
+                if hasattr(result, 'id'):
+                    point_id = str(result.id)
+                elif isinstance(result, dict):
+                    point_id = str(result.get('id', uuid.uuid4()))
+                else:
+                    point_id = str(uuid.uuid4())
+                
                 chunk = TextChunk(
-                    id=payload.get("chunk_id", str(uuid.uuid4())),
+                    id=payload.get("chunk_id", point_id),
                     document_id=payload.get("document_id", ""),
                     text=payload.get("text", ""),
                     embedding=None,  # Vector is not returned in query results

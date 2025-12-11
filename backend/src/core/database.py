@@ -41,9 +41,12 @@ class Database:
                 conn_str = f"{conn_str}{separator}sslmode=require"
             # Supabase works with sslmode=require, so keep it as is
             
-            return psycopg2.connect(conn_str)
+            # Set connection timeout to avoid hanging
+            return psycopg2.connect(conn_str, connect_timeout=10)
         except Exception as e:
+            # Don't print full error in production - just log connection issue
             print(f"Error connecting to database: {e}")
+            # Return None gracefully - app will work without database
             return None
     
     def _init_tables(self):

@@ -239,6 +239,20 @@ async def query_chatbot(user_query: UserQuery):
         print(f"❌ Error in query endpoint: {error_details}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
+@app.get("/", summary="Root endpoint.")
+def root():
+    """Root endpoint."""
+    return {
+        "message": "Physical AI Book RAG API",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "query": "/query",
+            "translate": "/translate",
+            "auth": "/auth"
+        }
+    }
+
 @app.get("/health", summary="Health check endpoint.")
 async def health_check():
     """

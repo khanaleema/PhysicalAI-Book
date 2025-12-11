@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import os
 
@@ -11,13 +11,23 @@ router = APIRouter(prefix="/translate", tags=["translate"])
 
 class TranslateRequest(BaseModel):
     content: str
-    targetLanguage: str = "ur"
-    preserveFormatting: bool = True
+    targetLanguage: str = Field(default="ur", alias="target_language")
+    preserveFormatting: bool = Field(default=True, alias="preserve_formatting")
+    
+    class Config:
+        populate_by_name = True  # Allow both field name and alias
 
 @router.post("")
 def translate_content(request: TranslateRequest):
     """Translate content to target language while preserving markdown formatting."""
     try:
+        # Validate input
+        if not request.content or len(request.content.strip()) < 10:
+            raise HTTPException(status_code=400, detail="Content is too short or empty")
+        
+        # Ensure targetLanguage has a default value
+        target_lang = getattr(request, 'targetLanguage', None) or getattr(request, 'target_language', None) or "ur"
+        
         gemini_api_key = os.getenv("GEMINI_API_KEY")
         if not gemini_api_key:
             raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
@@ -34,7 +44,7 @@ def translate_content(request: TranslateRequest):
             'hi': 'Hindi (हिन्दी)',
             'pt': 'Portuguese (Português)',
         }
-        target_lang_name = lang_map.get(request.targetLanguage, request.targetLanguage)
+        target_lang_name = lang_map.get(target_lang, target_lang)
         
         # Use Gemini API
         for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
@@ -97,7 +107,7 @@ Return ONLY the translated content with all formatting and line breaks preserved
         
         return {
             "translatedContent": translated_content,
-            "targetLanguage": request.targetLanguage
+            "targetLanguage": target_lang
         }
     except HTTPException:
         raise

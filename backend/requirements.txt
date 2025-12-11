@@ -31,6 +31,9 @@ huggingface_hub==0.36.0
 # HTML parsing for translation
 beautifulsoup4>=4.12.0
 
+# Text splitting for document processing
+langchain-text-splitters>=0.2.0
+
 
 # NOTE: sentence-transformers is REMOVED - using fastembed instead
 # Do NOT install sentence-transformers - it causes import errors with huggingface_hub
