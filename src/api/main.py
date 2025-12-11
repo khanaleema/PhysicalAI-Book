@@ -7,7 +7,12 @@ from src.models.schemas import UserQuery, ChatbotResponse
 from src.core.rag_pipeline import RAGPipeline, LLMProvider
 from src.data.ingestion import VectorDBClient
 from src.core.database import Database
-from src.api.translate import router as translate_router
+# Import translate router with error handling
+try:
+    from src.api.translate import router as translate_router
+except ImportError:
+    translate_router = None
+    print("⚠️ translate module not found - continuing without it")
 from src.api.simple_auth import router as auth_router
 from dotenv import load_dotenv
 
@@ -35,7 +40,8 @@ app.add_middleware(
 
 # Include routers - SIMPLE AUTH FIRST (no database dependency)
 app.include_router(auth_router)
-app.include_router(translate_router)
+if translate_router:
+    app.include_router(translate_router)
 
 # Initialize RAG components
 try:
