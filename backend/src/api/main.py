@@ -13,6 +13,7 @@ from src.data.ingestion import VectorDBClient
 from src.core.database import Database
 from src.api.auth import router as auth_router
 from src.api.translate import router as translate_router
+# Note: personalize module exists but is not imported here (placeholder for future use)
 from dotenv import load_dotenv
 
 load_dotenv()
