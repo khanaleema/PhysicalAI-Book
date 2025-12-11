@@ -25,8 +25,7 @@ FastAPI backend for the Physical AI & Humanoid Robotics book.
 - `POST /auth/sign-in` - User login
 - `POST /auth/forgot-password` - Request password reset
 - `POST /auth/reset-password` - Reset password
-- `POST /personalize` - Personalize content
-- `POST /translate` - Translate content
+- `POST /translate` - Translate content (if available)
 - `POST /query` - Chatbot query
 - `GET /health` - Health check
 
