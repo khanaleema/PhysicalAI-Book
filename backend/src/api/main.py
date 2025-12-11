@@ -13,10 +13,13 @@ from src.data.ingestion import VectorDBClient
 from src.core.database import Database
 from src.api.auth import router as auth_router
 from src.api.translate import router as translate_router
+# Import personalize router with error handling
 try:
     from src.api.personalize import router as personalize_router
 except ImportError:
+    # personalize module not available - set to None
     personalize_router = None
+    print("⚠️ personalize module not found - continuing without it")
 from dotenv import load_dotenv
 
 load_dotenv()
