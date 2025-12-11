@@ -37,8 +37,8 @@ function HomepageHeader() {
             </div>
             <p className={styles.heroDescription}>
               Master the complete journey from foundational robotics concepts to cutting-edge 
-              research in Physical AI and Humanoid Robotics. Build intelligent systems that 
-              perceive, reason, and act in the physical world.
+              research in Physical AI and Humanoid Robotics. Build intelligent systems that
+              perceive, reason, and act in the physical world..!!
             </p>
             <div className={styles.heroButtons}>
               <Link
