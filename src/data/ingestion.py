@@ -2,7 +2,7 @@ import os
 import sys
 from typing import List, Optional
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, Query, VectorInput
+from qdrant_client.models import Distance, VectorParams, PointStruct
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.models.schemas import SourceDocument, TextChunk
 from dotenv import load_dotenv
@@ -297,21 +297,18 @@ class VectorDBClient:
                 # This is a simplified approach - in production, you might want more sophisticated filtering
                 pass
             
-            # Use Qdrant Query API - query() method (introduced in version 1.10.0)
-            # This is the primary endpoint for retrieving points based on a query
-            # For vector queries, construct a Query object with VectorInput
-            query_result = self.client.query(
+            # Use Qdrant search() method - the standard and most compatible API
+            # This works across all qdrant-client versions and doesn't require Query/VectorInput models
+            query_result = self.client.search(
                 collection_name=self.collection_name,
-                query=Query(
-                    vector=VectorInput(vector=query_embedding)
-                ),
+                query_vector=query_embedding,
                 limit=top_k,
                 query_filter=query_filter,
                 with_payload=True
             )
             
-            # query() returns a QueryResponse object with .points attribute
-            results = query_result.points if hasattr(query_result, 'points') else []
+            # search() returns a list of ScoredPoint objects directly
+            results = query_result if isinstance(query_result, list) else []
             
             chunks = []
             for result in results:

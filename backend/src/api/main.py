@@ -11,9 +11,8 @@ from src.models.schemas import UserQuery, ChatbotResponse
 from src.core.rag_pipeline import RAGPipeline, LLMProvider
 from src.data.ingestion import VectorDBClient
 from src.core.database import Database
-from src.api.personalize import router as personalize_router
+from src.api.auth import router as auth_router
 from src.api.translate import router as translate_router
-from src.api.simple_auth import router as auth_router
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,9 +37,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers - SIMPLE AUTH FIRST (no database dependency)
+# Include routers - Database-based auth (requires DATABASE_URL)
 app.include_router(auth_router)
-app.include_router(personalize_router)
 app.include_router(translate_router)
 
 # Initialize RAG components with retry logic and lazy initialization

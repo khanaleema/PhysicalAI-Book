@@ -4,6 +4,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 import hashlib
 import secrets
+import json
 from datetime import datetime, timedelta
 import jwt
 import os

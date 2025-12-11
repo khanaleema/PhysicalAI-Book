@@ -11,19 +11,32 @@ router = APIRouter(prefix="/translate", tags=["translate"])
 
 class TranslateRequest(BaseModel):
     content: str
-    chapterPath: str
-    targetLanguage: str = "urdu"
+    targetLanguage: str = "ur"
+    preserveFormatting: bool = True
 
 @router.post("")
 def translate_content(request: TranslateRequest):
-    """Translate content to Urdu while preserving markdown formatting."""
+    """Translate content to target language while preserving markdown formatting."""
     try:
         gemini_api_key = os.getenv("GEMINI_API_KEY")
         if not gemini_api_key:
             raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
         
+        # Language code mapping
+        lang_map = {
+            'ur': 'Urdu (اردو)',
+            'es': 'Spanish (Español)',
+            'fr': 'French (Français)',
+            'de': 'German (Deutsch)',
+            'ar': 'Arabic (العربية)',
+            'zh': 'Chinese (中文)',
+            'ja': 'Japanese (日本語)',
+            'hi': 'Hindi (हिन्दी)',
+            'pt': 'Portuguese (Português)',
+        }
+        target_lang_name = lang_map.get(request.targetLanguage, request.targetLanguage)
+        
         # Use Gemini API
-        # Ensure proxy vars are removed before import
         for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
             os.environ.pop(key, None)
         
@@ -31,9 +44,9 @@ def translate_content(request: TranslateRequest):
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        prompt = f"""You are an expert translator specializing in translating technical and educational content from English to Urdu (اردو).
+        prompt = f"""You are an expert translator specializing in translating technical and educational content from English to {target_lang_name}.
 
-Translate the following markdown content from English to Urdu. CRITICAL REQUIREMENTS:
+Translate the following content from English to {target_lang_name}. CRITICAL REQUIREMENTS:
 
 1. Preserve ALL markdown formatting EXACTLY:
    - Headings: Keep # ## ### exactly as they are
@@ -46,7 +59,7 @@ Translate the following markdown content from English to Urdu. CRITICAL REQUIREM
    - Blockquotes: Keep > format exactly
    - Tables: Keep | column | format exactly, preserve table structure
    - Horizontal rules: Keep --- exactly
-   - Line breaks: Preserve double line breaks for paragraphs
+   - Line breaks: Preserve ALL line breaks and paragraph spacing - DO NOT compress multiple lines into one
 
 2. Translate ONLY the text content, NOT:
    - Markdown syntax symbols (# * - ` > | etc.)
@@ -56,44 +69,41 @@ Translate the following markdown content from English to Urdu. CRITICAL REQUIREM
    - Variable names, function names, class names in code
    - File paths, commands, or technical identifiers
 
-3. Table formatting: Ensure tables have proper spacing:
-   - Use: | Header 1 | Header 2 |
-   - Separator: |----------|----------|
-   - Rows: | Cell 1   | Cell 2   |
-   - Maintain alignment and spacing
+3. CRITICAL: Preserve ALL line breaks and paragraph structure:
+   - If there are multiple blank lines, keep them
+   - If there are single line breaks, keep them
+   - DO NOT merge paragraphs or compress content
+   - Maintain the exact same line count and structure
 
-4. Code blocks: Keep code language identifiers and all code content unchanged.
+4. Use proper script and maintain readability for {target_lang_name}.
 
-5. Use proper Urdu script and maintain readability.
+5. Keep technical accuracy - translate concepts clearly.
 
-6. Keep technical accuracy - translate concepts clearly.
+6. IMPORTANT: The output should have the SAME number of lines as the input (or very close). Do not compress or summarize.
 
 Original Content:
 {request.content}
 
-Return ONLY the translated markdown content with all formatting preserved exactly."""
+Return ONLY the translated content with all formatting and line breaks preserved exactly."""
 
-        # Use Gemini API
-        full_prompt = f"You are an expert translator for English to Urdu (اردو) translation, specializing in technical and educational content. Always preserve markdown formatting exactly.\n\n{prompt}"
         result = model.generate_content(
-            full_prompt,
+            prompt,
             generation_config={
                 "temperature": 0.3,
-                "max_output_tokens": 4000
+                "max_output_tokens": 16000
             }
         )
         translated_content = result.text
         
         return {
             "translatedContent": translated_content,
-            "chapterPath": request.chapterPath,
             "targetLanguage": request.targetLanguage
         }
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
         error_detail = str(e)
         if 'GEMINI_API_KEY' in error_detail:
             error_detail = "GEMINI_API_KEY not configured. Please set it in environment variables."
         raise HTTPException(status_code=500, detail=f"Translation failed: {error_detail}")
+

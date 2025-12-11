@@ -34,14 +34,12 @@ class Database:
             # Remove channel_binding parameter if it exists
             conn_str = re.sub(r'[&?]channel_binding=[^&\s]*', '', conn_str)
             
-            # Also fix sslmode=require to sslmode=prefer
-            if "sslmode=require" in conn_str:
-                conn_str = conn_str.replace("sslmode=require", "sslmode=prefer")
-            
-            # Ensure sslmode is set (prefer is safer than disable)
+            # For Supabase, ensure sslmode is set
+            # Supabase requires SSL, so use 'require' or 'prefer'
             if "sslmode=" not in conn_str:
                 separator = "&" if "?" in conn_str else "?"
-                conn_str = f"{conn_str}{separator}sslmode=prefer"
+                conn_str = f"{conn_str}{separator}sslmode=require"
+            # Supabase works with sslmode=require, so keep it as is
             
             return psycopg2.connect(conn_str)
         except Exception as e:

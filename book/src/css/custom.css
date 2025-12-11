@@ -1040,23 +1040,6 @@ html[data-theme='dark'] .main-wrapper > .container > main {
   height: auto !important;
 }
 
-/* Ensure chapter-personalize-container is visible */
-#chapter-personalize-container {
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  position: relative !important;
-  width: 100% !important;
-  margin: 2rem 0 !important;
-}
-
-/* Ensure language toggle button is visible */
-.navbarActions .languageToggle {
-  display: flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
 .navbarActions .signInButton,
 .navbarActions .signUpButton {
   display: flex !important;

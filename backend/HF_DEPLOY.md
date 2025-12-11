@@ -7,13 +7,19 @@ Go to your Space Settings → Variables and add these:
 ### Required Variables:
 
 ```
-GROQ_API_KEY=your_groq_api_key_here
+# Gemini API (for translation and LLM)
 GEMINI_API_KEY=your_gemini_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
+
+# Qdrant Vector Database
 QDRANT_URL=your_qdrant_url_here
 QDRANT_API_KEY=your_qdrant_api_key_here
 QDRANT_COLLECTION_NAME=physical_ai_book
-DATABASE_URL=your_database_url_here
+
+# Neon Postgres Database (FREE - Get from https://neon.tech)
+# Format: postgresql://username:password@ep-xxx-xxx.region.aws.neon.tech/dbname?sslmode=require
+DATABASE_URL=postgresql://username:password@ep-xxx-xxx.region.aws.neon.tech/dbname?sslmode=require
+
+# Authentication Secret (generate random 32+ character string)
 AUTH_SECRET_KEY=your_auth_secret_key_here
 ```
 

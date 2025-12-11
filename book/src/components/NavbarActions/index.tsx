@@ -1,36 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import Link from '@docusaurus/Link';
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import LanguageSwitcher from '@site/src/components/LanguageSwitcher';
 import styles from './styles.module.css';
-import { marked } from 'marked';
-import { useApiUrl } from '@site/src/lib/api';
 
 export default function NavbarActions() {
-  const apiUrl = useApiUrl();
   const baseUrl = useBaseUrl('/');
   const [user, setUser] = useState<any>(null);
   const [showMenu, setShowMenu] = useState(false);
-  const [isUrdu, setIsUrdu] = useState(false);
-  const [isTranslating, setIsTranslating] = useState(false);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
       setUser(JSON.parse(userStr));
     }
-    
-    // Check if content is translated
-    const checkUrdu = () => {
-      const contentElement = document.querySelector('.markdown');
-      if (contentElement && contentElement.dataset.isUrdu) {
-        setIsUrdu(true);
-      } else {
-        setIsUrdu(false);
-      }
-    };
-    
-    checkUrdu();
-    const interval = setInterval(checkUrdu, 2000);
     
     // Close dropdown on outside click
     const handleClickOutside = (event: MouseEvent) => {
@@ -43,98 +26,9 @@ export default function NavbarActions() {
     document.addEventListener('mousedown', handleClickOutside);
     
     return () => {
-      clearInterval(interval);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showMenu]);
-
-  const handleTranslate = async () => {
-    if (!user) {
-      alert('Please sign in to translate content');
-      window.location.href = '/auth/signin';
-      return;
-    }
-
-    const contentElement = document.querySelector('.markdown');
-    if (!contentElement) {
-      alert('Content not found. Please navigate to a chapter page.');
-      return;
-    }
-
-    if (isUrdu) {
-      // Revert to English - restore from translation original
-      if (contentElement.dataset.originalContentForTranslation) {
-        contentElement.innerHTML = contentElement.dataset.originalContentForTranslation;
-        delete contentElement.dataset.originalContentForTranslation;
-        delete contentElement.dataset.isUrdu;
-        setIsUrdu(false);
-      }
-      return;
-    }
-
-    setIsTranslating(true);
-    const content = contentElement.textContent || '';
-    
-    if (!content || content.length < 100) {
-      alert('Content is too short to translate. Please navigate to a chapter with more content.');
-      setIsTranslating(false);
-      return;
-    }
-
-    const chapterPath = typeof window !== 'undefined' ? window.location.pathname : '';
-
-    try {
-      // Store original content before translating (separate from personalization)
-      // Use a different dataset key to avoid conflicts with personalization
-      if (!contentElement.dataset.originalContentForTranslation) {
-        // Get the true original - if personalized, get from personalized original, otherwise current
-        const trueOriginal = contentElement.dataset.originalContentForPersonalization 
-          ? contentElement.dataset.originalContentForPersonalization 
-          : contentElement.innerHTML;
-        contentElement.dataset.originalContentForTranslation = trueOriginal;
-      }
-
-      const response = await fetch(`${apiUrl}/translate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          chapterPath,
-          targetLanguage: 'urdu',
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (response.ok && data.translatedContent) {
-        // Convert markdown to HTML for proper rendering
-        const htmlContent = marked.parse(data.translatedContent, {
-          breaks: true,
-          gfm: true,
-        });
-        contentElement.innerHTML = htmlContent;
-        contentElement.dataset.isUrdu = 'true';
-        setIsUrdu(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else {
-        const errorMsg = data.detail || 'Failed to translate content';
-        alert(errorMsg);
-        if (contentElement.dataset.originalContentForTranslation) {
-          contentElement.innerHTML = contentElement.dataset.originalContentForTranslation;
-          delete contentElement.dataset.originalContentForTranslation;
-        }
-      }
-    } catch (error) {
-      console.error('Translation error:', error);
-      alert('Network error. Please check if backend server is running.');
-      if (contentElement && contentElement.dataset.originalContentForTranslation) {
-        contentElement.innerHTML = contentElement.dataset.originalContentForTranslation;
-        delete contentElement.dataset.originalContentForTranslation;
-      }
-    } finally {
-      setIsTranslating(false);
-    }
-  };
 
   const handleSignOut = () => {
     localStorage.removeItem('user');
@@ -142,32 +36,14 @@ export default function NavbarActions() {
     localStorage.removeItem('authToken');
     setUser(null);
     setShowMenu(false);
-    // Redirect to home page with baseUrl
     window.location.href = baseUrl;
   };
 
-  // Check if we're on a docs page - check with and without baseUrl
-  const isDocsPage = typeof window !== 'undefined' && window.location.pathname.includes('/docs/');
-
   return (
     <div className={styles.navbarActions}>
-      {/* Language Toggle - Only show on docs pages */}
-      {isDocsPage && user && (
-        <button
-          onClick={handleTranslate}
-          className={`${styles.languageToggle} ${isUrdu ? styles.active : ''}`}
-          disabled={isTranslating}
-          title={isUrdu ? 'Switch to English' : 'Translate to Urdu (اردو)'}
-        >
-          <span className={styles.languageIcon}>
-            {isUrdu ? '🇬🇧' : '🇵🇰'}
-          </span>
-          <span className={styles.languageText}>
-            {isTranslating ? 'Translating...' : isUrdu ? 'English' : 'اردو'}
-          </span>
-        </button>
-      )}
-
+      {/* Language Switcher */}
+      <LanguageSwitcher />
+      
       {/* User Menu */}
       {!user ? (
         <>
@@ -217,7 +93,7 @@ export default function NavbarActions() {
                   </div>
                 </div>
                 <div className={styles.divider}></div>
-                <Link to="/auth/profile" className={styles.dropdownItem} onClick={() => setShowMenu(false)}>
+                <Link to={`${baseUrl}auth/profile/`} className={styles.dropdownItem} onClick={() => setShowMenu(false)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                     <circle cx="12" cy="7" r="4"></circle>
@@ -241,4 +117,3 @@ export default function NavbarActions() {
     </div>
   );
 }
-
