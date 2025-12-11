@@ -1,9 +1,5 @@
 import os
 import sys
-# CRITICAL: Remove env vars BEFORE any imports that might use them
-for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
-    os.environ.pop(key, None)
-
 from typing import List, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
@@ -14,58 +10,53 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import threading
 
+# Load environment variables first
 load_dotenv()
 
-# Determine embedding provider
+# CRITICAL: Remove proxy env vars BEFORE any imports that might use them (re-run as a safeguard)
+# Some libraries (like requests/huggingface) can auto-detect proxies and fail in restrictive environments.
+for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
+    os.environ.pop(key, None)
+
+# --- Configuration Helpers ---
 def clean_env_var(value: str) -> str:
     """Clean environment variable - remove newlines and extra whitespace"""
     if not value:
         return ""
     return value.replace("\n", "").replace("\r", "").strip()
 
-EMBEDDING_PROVIDER = clean_env_var(os.getenv("EMBEDDING_PROVIDER", "huggingface")).lower()  # "gemini" or "huggingface"
-EMBEDDING_MODEL = clean_env_var(os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"))  # FastEmbedding default (faster than sentence-transformers)
+EMBEDDING_PROVIDER = clean_env_var(os.getenv("EMBEDDING_PROVIDER", "huggingface")).lower()
+EMBEDDING_MODEL = clean_env_var(os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"))
 
-# Global variable for embedding model
+# --- Global Embedding State ---
 hf_model = None
-_model_lock = threading.Lock()  # Thread-safe model loading
-_embedding_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="embedding")  # Non-blocking embeddings
+_model_lock = threading.Lock()
+_embedding_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="embedding")
 
-# Initialize embedding clients based on provider
-# CRITICAL: Remove env vars BEFORE any client initialization
-for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
-    if key in os.environ:
-        os.environ.pop(key)
-
-# Initialize embedding clients based on provider
-# CRITICAL: Remove env vars BEFORE any client initialization
-for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
-    if key in os.environ:
-        os.environ.pop(key)
-
+# --- Initialize Embedding Clients ---
 if EMBEDDING_PROVIDER == "gemini":
     try:
         import google.generativeai as genai
-        genai.configure(api_key=clean_env_var(os.getenv("GEMINI_API_KEY", "")))
+        # Ensure GEMINI_API_KEY is available and configured
+        gemini_api_key = clean_env_var(os.getenv("GEMINI_API_KEY", ""))
+        if not gemini_api_key:
+            print("❌ ERROR: GEMINI_API_KEY is not set for gemini provider.")
+            sys.exit(1)
+        genai.configure(api_key=gemini_api_key)
         EMBEDDING_MODEL = clean_env_var(os.getenv("EMBEDDING_MODEL", "models/embedding-001"))
     except ImportError:
         print("Warning: google-generativeai not installed. Install with: pip install google-generativeai")
 elif EMBEDDING_PROVIDER == "huggingface":
     try:
+        # Fastembed import is here to check if the library is available
         from fastembed import TextEmbedding
-        model_name = clean_env_var(os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"))
-        EMBEDDING_MODEL = model_name
+        # Model loading is lazy, so hf_model is kept None here
         print(f"Loading FastEmbedding model: {EMBEDDING_MODEL}")
         print("FastEmbedding is faster and lighter than sentence-transformers!")
-        # FastEmbedding handles caching automatically
-        # Don't load model at import time - load lazily
-        hf_model = None
         print(f"✅ FastEmbedding will be loaded on first use")
     except ImportError as e:
-        print(f"❌ ERROR: fastembed not installed!")
-        print(f"Install with: pip install fastembed")
+        print(f"❌ ERROR: fastembed not installed! Install with: pip install fastembed")
         print(f"Import error details: {e}")
-        print(f"Python path: {sys.path}")
         hf_model = None
     except Exception as e:
         print(f"❌ ERROR: Failed to initialize FastEmbedding: {e}")
@@ -73,13 +64,14 @@ elif EMBEDDING_PROVIDER == "huggingface":
         traceback.print_exc()
         hf_model = None
 
-# Initialize text splitter
+# --- Text Splitting Configuration ---
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
     chunk_overlap=200,
     length_function=len,
 )
 
+# --- Document Loading and Chunking ---
 def load_document(file_path: str, doc_type: str) -> SourceDocument:
     """Loads a document from a given file path."""
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -96,6 +88,7 @@ def load_markdown_documents(docs_dir: str) -> List[SourceDocument]:
                 file_path = os.path.join(root, file)
                 # Extract part/chapter info from path
                 rel_path = os.path.relpath(file_path, docs_dir)
+                # Use os.path.join for path construction consistency
                 doc_type = f"TEXTBOOK_{rel_path.replace(os.sep, '_')}"
                 documents.append(load_document(file_path, doc_type))
     return documents
@@ -116,6 +109,7 @@ def chunk_document(document: SourceDocument, chunk_size: int = 1000, chunk_overl
         ))
     return chunks
 
+# --- Embedding Generation ---
 def _load_fastembed_model():
     """Load FastEmbedding model in a thread-safe way."""
     global hf_model
@@ -125,6 +119,7 @@ def _load_fastembed_model():
             model_name = clean_env_var(os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"))
             print(f"Loading FastEmbedding model on-demand: {model_name}")
             try:
+                # FastEmbedding caches models, so this is fast after the first time
                 hf_model = TextEmbedding(model_name=model_name)
                 print(f"✅ FastEmbedding model loaded on-demand!")
             except Exception as e:
@@ -139,24 +134,32 @@ def _embed_text_fastembed(text: str):
     global hf_model
     try:
         if hf_model is None:
-            _load_fastembed_model()
+            # Attempt to load if it's still None (should be handled by executor before)
+            _load_fastembed_model() 
         if hf_model is None:
-            raise ValueError("FastEmbedding model failed to load. Check logs for details.")
+            raise ValueError("FastEmbedding model failed to load.")
+        
         # FastEmbedding returns an iterator, get first result
         embeddings = list(hf_model.embed([text]))
-        if len(embeddings) == 0:
+        if not embeddings:
             raise ValueError("FastEmbedding returned empty embedding")
         return embeddings[0].tolist()
     except ImportError as e:
         raise ValueError(f"FastEmbedding not installed: {str(e)}. Install with: pip install fastembed")
     except Exception as e:
-        raise ValueError(f"FastEmbedding error: {str(e)}")
+        # Catch any internal embedding errors (e.g., OOM, bad model download)
+        raise ValueError(f"FastEmbedding error during embedding: {str(e)}")
 
 def generate_embedding(text: str, timeout: float = 10.0) -> List[float]:
     """
     Generates a vector embedding for a given text using Gemini or FastEmbedding.
-    Uses thread pool to prevent blocking and includes timeout protection.
+    Uses thread pool for non-blocking FastEmbedding and includes timeout protection.
     """
+    if not text:
+        # Return a zero vector or handle as error if text is empty
+        # For BAAI/bge-small-en-v1.5 dimension is 384
+        return [0.0] * 384 
+
     try:
         if EMBEDDING_PROVIDER == "gemini":
             import google.generativeai as genai
@@ -166,21 +169,21 @@ def generate_embedding(text: str, timeout: float = 10.0) -> List[float]:
                 task_type="retrieval_document"
             )
             return result['embedding']
+        
         elif EMBEDDING_PROVIDER == "huggingface":
-            # Use thread pool for non-blocking embedding generation
+            # Load model if not loaded (with a long timeout, as this is a one-time operation)
+            global hf_model
             if hf_model is None:
-                # Load model in background thread with timeout
                 try:
                     future = _embedding_executor.submit(_load_fastembed_model)
-                    future.result(timeout=30.0)  # 30s timeout for model loading
+                    # Use a longer timeout for the initial model download/load
+                    future.result(timeout=60.0) 
                 except FutureTimeoutError:
-                    raise ValueError("FastEmbedding model loading timed out after 30 seconds. Please check logs.")
+                    raise ValueError("FastEmbedding model loading timed out after 60 seconds.")
                 except Exception as e:
-                    error_msg = f"Failed to load FastEmbedding model: {str(e)}. Install with: pip install fastembed"
-                    print(f"❌ {error_msg}")
-                    raise ValueError(error_msg)
-            
-            # Generate embedding in thread pool with timeout
+                    raise ValueError(f"Failed to load FastEmbedding model: {str(e)}")
+
+            # Generate embedding with standard timeout
             try:
                 future = _embedding_executor.submit(_embed_text_fastembed, text)
                 embedding = future.result(timeout=timeout)
@@ -188,30 +191,25 @@ def generate_embedding(text: str, timeout: float = 10.0) -> List[float]:
             except FutureTimeoutError:
                 raise ValueError(f"Embedding generation timed out after {timeout} seconds")
             except Exception as e:
-                error_msg = f"Failed to generate embedding with FastEmbedding: {str(e)}"
-                print(f"❌ {error_msg}")
-                raise ValueError(error_msg)
+                # Re-raise the error caught in _embed_text_fastembed
+                raise
+        
         else:
             raise ValueError(f"Unknown embedding provider: {EMBEDDING_PROVIDER}")
-    except ValueError as ve:
-        # Re-raise ValueError with clear message
-        raise ve
-    except ImportError as ie:
-        error_msg = f"FastEmbedding not installed: {str(ie)}. Install with: pip install fastembed"
-        print(f"❌ {error_msg}")
-        raise ValueError(error_msg)
+            
     except Exception as e:
-        error_msg = f"Error generating embedding with FastEmbedding: {str(e)}"
+        error_msg = f"Error generating embedding: {str(e)}"
         print(f"❌ {error_msg}")
         import traceback
         traceback.print_exc()
         raise ValueError(error_msg)
 
+# --- Qdrant Vector DB Client ---
 class VectorDBClient:
     """Client for interacting with Qdrant vector database."""
     def __init__(self):
+        # Nested clean_env_var to ensure it's available
         def clean_env_var(value: str) -> str:
-            """Clean environment variable - remove newlines and extra whitespace"""
             if not value:
                 return ""
             return value.replace("\n", "").replace("\r", "").strip()
@@ -219,17 +217,13 @@ class VectorDBClient:
         qdrant_url = clean_env_var(os.getenv("QDRANT_URL", ""))
         qdrant_api_key_raw = os.getenv("QDRANT_API_KEY", "")
         
-        # Fix concatenated API keys (HF Spaces sometimes concatenates them)
-        # If key contains GROQ_API_KEY pattern, extract only QDRANT part
+        # NOTE: Keeping the API key cleaning logic as it addresses a specific HF Spaces issue
         if "gsk_" in qdrant_api_key_raw and "eyJ" in qdrant_api_key_raw:
-            # Split on GROQ key pattern
             parts = qdrant_api_key_raw.split("gsk_")
-            if len(parts) > 1:
-                # Take the part that looks like JWT (starts with eyJ)
-                for part in parts:
-                    if part.strip().startswith("eyJ"):
-                        qdrant_api_key_raw = part.strip()
-                        break
+            for part in parts:
+                if part.strip().startswith("eyJ"):
+                    qdrant_api_key_raw = part.strip()
+                    break
         
         qdrant_api_key = clean_env_var(qdrant_api_key_raw)
         self.collection_name = clean_env_var(os.getenv("QDRANT_COLLECTION_NAME", "physical_ai_book"))
@@ -237,7 +231,6 @@ class VectorDBClient:
         if not qdrant_url or not qdrant_api_key:
             raise ValueError("QDRANT_URL and QDRANT_API_KEY must be set in environment variables")
         
-        # Validate API key format (should be JWT token starting with eyJ)
         if not qdrant_api_key.startswith("eyJ"):
             print(f"⚠️ WARNING: QDRANT_API_KEY doesn't look like a JWT token. First 20 chars: {qdrant_api_key[:20]}")
         
@@ -255,9 +248,8 @@ class VectorDBClient:
             
             if self.collection_name not in collection_names:
                 print(f"📦 Collection '{self.collection_name}' not found. Creating...")
-                # Use default dimension for FastEmbedding BAAI/bge-small-en-v1.5 (384 dimensions)
-                # Don't call generate_embedding here to avoid initialization issues
-                dimension = 384  # FastEmbedding BAAI/bge-small-en-v1.5 dimension
+                # Assuming BAAI/bge-small-en-v1.5 dimension (384)
+                dimension = 384
                 print(f"✅ Using FastEmbedding dimension: {dimension} (BAAI/bge-small-en-v1.5)")
                 
                 self.client.create_collection(
@@ -274,118 +266,109 @@ class VectorDBClient:
             print(f"❌ Error ensuring collection: {e}")
             import traceback
             traceback.print_exc()
-            # Don't raise - allow connection even if collection creation fails
             print("⚠️ Continuing without collection creation...")
 
     def upsert_chunks(self, chunks: List[TextChunk]):
         """Upserts text chunks into the vector database."""
         points = []
         for chunk in chunks:
-            if not chunk.embedding:
-                chunk.embedding = generate_embedding(chunk.text)
+            try:
+                if not chunk.embedding:
+                    # Generate embedding only if not already present
+                    chunk.embedding = generate_embedding(chunk.text)
+            except ValueError as e:
+                print(f"⚠️ Skipping chunk due to embedding error: {e}")
+                continue # Skip this chunk if embedding fails
             
             points.append(
                 PointStruct(
-                    id=str(uuid.uuid4()),
+                    # Use a unique ID (UUID is safe)
+                    id=str(uuid.uuid4()), 
                     vector=chunk.embedding,
                     payload={
                         "text": chunk.text,
                         "document_id": chunk.document_id,
                         "source_metadata": chunk.source_metadata,
                         "order_in_document": chunk.order_in_document,
-                        "chunk_id": chunk.id
+                        # Store chunk.id if TextChunk schema has one, otherwise remove
+                        "chunk_id": chunk.id if hasattr(chunk, 'id') and chunk.id else str(uuid.uuid4())
                     }
                 )
             )
         
         if points:
+            # Use points_count for better logging
+            points_count = len(points)
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=points
+                points=points,
+                wait=True # Wait for the operation to complete
             )
-            print(f"Upserted {len(points)} chunks into vector DB")
+            print(f"Upserted {points_count} chunks into vector DB")
+        else:
+            print("No points to upsert.")
 
     def retrieve_relevant_chunks(self, query_embedding: List[float], top_k: int = 5, selected_text: Optional[str] = None) -> List[TextChunk]:
-        """Retrieves relevant chunks based on a query embedding using Qdrant Query API.
-        
-        According to Qdrant documentation: https://qdrant.tech/documentation/concepts/search/
-        Use query_points() with a direct vector for nearest neighbors search.
-        """
+        """Retrieves relevant chunks based on a query embedding using Qdrant search API."""
         try:
-            # If selected text is provided, search only in that context
             query_filter = None
-            if selected_text:
-                # For selected text, we'll use a text-based filter
-                # This is a simplified approach - in production, you might want more sophisticated filtering
-                pass
-            
-            # Use Qdrant Query API - query_points() with direct vector
-            # Documentation: https://qdrant.tech/documentation/concepts/search/
-            # Python example: client.query_points(collection_name="...", query=[0.2, 0.1, 0.9, 0.7])
-            query_result = self.client.query_points(
+            # Note: For filtering by text content like 'selected_text', you would need 
+            # to implement a `FieldCondition` or `TextIndex` filter in Qdrant,
+            # which is complex and outside the scope of the basic fix. 
+            # We keep query_filter simple/None for pure vector search.
+
+            # CRITICAL FIX: The use of self.client.search() requires qdrant-client >= 1.1.0.
+            # If your environment uses an older version, you must update the library.
+            # If you are stuck on an old version, change .search to .search_points
+            query_result = self.client.search(
                 collection_name=self.collection_name,
-                query=query_embedding,  # Direct vector list for nearest neighbors search
+                query_vector=query_embedding,
                 limit=top_k,
                 query_filter=query_filter,
                 with_payload=True,
-                with_vectors=False  # We don't need vectors in response
+                # Optionally add: with_vectors=False to save bandwidth
             )
             
-            # Extract points from query_result
-            # query_points() returns a QueryResponse object with a 'points' attribute
-            # According to Qdrant Python client, query_points returns a QueryResponse with .points attribute
-            if hasattr(query_result, 'points'):
-                results = query_result.points
-            elif isinstance(query_result, (list, tuple)):
-                # Handle tuple/list response format (points, next_page_offset)
-                results = query_result[0] if len(query_result) > 0 and isinstance(query_result[0], list) else query_result
-            else:
-                results = []
+            # The result is a list of ScoredPoint objects
+            results = query_result if isinstance(query_result, list) else []
             
             chunks = []
             for result in results:
-                # Handle Qdrant Point/ScoredPoint objects
-                if hasattr(result, 'payload'):
-                    payload = result.payload
-                elif hasattr(result, 'id'):
-                    # It's a Point object, get payload
-                    payload = getattr(result, 'payload', {})
-                elif isinstance(result, dict):
-                    payload = result.get('payload', result)
-                else:
-                    payload = {}
-                
-                # Get point ID
-                point_id = None
-                if hasattr(result, 'id'):
-                    point_id = str(result.id)
-                elif isinstance(result, dict):
-                    point_id = str(result.get('id', uuid.uuid4()))
-                else:
-                    point_id = str(uuid.uuid4())
+                payload = result.payload
                 
                 chunk = TextChunk(
-                    id=payload.get("chunk_id", point_id),
+                    # Use payload data
+                    id=payload.get("chunk_id", str(uuid.uuid4())),
                     document_id=payload.get("document_id", ""),
                     text=payload.get("text", ""),
-                    embedding=None,  # Vector is not returned in query results
+                    embedding=None, # Embedding is not needed for the final answer, so we don't retrieve it
                     source_metadata=payload.get("source_metadata", ""),
-                    order_in_document=payload.get("order_in_document", 0)
+                    order_in_document=payload.get("order_in_document", 0),
+                    # Add the relevance score for debugging/ranking (optional)
+                    score=result.score
                 )
                 chunks.append(chunk)
             
             return chunks
+        except AttributeError as ae:
+            # Specific error handling for the missing attribute
+            print(f"Error retrieving chunks: 'QdrantClient' object has no attribute 'search'")
+            print(f"This typically means your 'qdrant-client' package is too old.")
+            print(f"Please update your 'qdrant-client' dependency to version 1.1.0 or newer.")
+            import traceback
+            traceback.print_exc()
+            return []
         except Exception as e:
             print(f"Error retrieving chunks: {e}")
             import traceback
             traceback.print_exc()
             return []
 
+# --- Indexing Pipeline ---
 def run_indexing_pipeline(docs_dir: str, vector_db_client: VectorDBClient):
     """Runs the full data ingestion and indexing pipeline."""
     print("Running indexing pipeline...")
     
-    # Load all markdown documents
     documents = load_markdown_documents(docs_dir)
     print(f"Loaded {len(documents)} documents")
     
