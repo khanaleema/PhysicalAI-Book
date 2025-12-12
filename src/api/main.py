@@ -4,17 +4,15 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 import os
 import uuid
+import time
+import asyncio
 from src.models.schemas import UserQuery, ChatbotResponse
 from src.core.rag_pipeline import RAGPipeline, LLMProvider
 from src.data.ingestion import VectorDBClient
 from src.core.database import Database
-# Try to use database auth, fallback to simple_auth if database fails
-try:
-    from src.api.auth import router as auth_router
-    print("✅ Using database-based authentication")
-except Exception as e:
-    print(f"⚠️ Database auth failed, using simple auth: {e}")
-    from src.api.simple_auth import router as auth_router
+# Always use database-based authentication
+from src.api.auth import router as auth_router
+print("✅ Using database-based authentication")
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -212,94 +210,143 @@ async def personalize_content(request: PersonalizeRequest):
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        prompt = f"""You are an expert educational content personalization system. Your task is to personalize technical content for a {level_info['name']} level learner.
+        # Simplified, shorter prompt to reduce processing time
+        prompt = f"""Personalize this content for {level_info['name']} level learners.
 
-USER LEVEL: {level_info['name']}
-
-PERSONALIZATION GUIDELINES:
+Guidelines:
 {level_info['guidance']}
 
-CRITICAL REQUIREMENTS:
+Rules:
+- Keep ALL markdown formatting (# * ` [] etc.)
+- Keep code blocks unchanged
+- Keep URLs unchanged
+- Adjust explanations for {level_info['name']} level
+- Maintain structure and accuracy
 
-1. Preserve ALL markdown formatting EXACTLY:
-   - Headings: Keep # ## ### exactly as they are
-   - Code blocks: Keep ```language``` format exactly, preserve code inside
-   - Inline code: Keep `code` format exactly
-   - Lists: Keep - * 1. 2. format exactly, maintain indentation
-   - Links: Keep [text](url) format exactly
-   - Bold: Keep **text** format exactly
-   - Italic: Keep *text* format exactly
-   - Blockquotes: Keep > format exactly
-   - Tables: Keep | column | format exactly, preserve table structure
-   - Horizontal rules: Keep --- exactly
-   - Line breaks: Preserve ALL line breaks and paragraph spacing
-
-2. DO NOT change:
-   - Markdown syntax symbols (# * - ` > | etc.)
-   - Code in code blocks (keep code as-is)
-   - URLs in links (keep URLs as-is)
-   - Mathematical formulas and equations
-   - Technical terms that are standard in the field
-
-3. Personalize by:
-   - Adjusting explanations to match the level
-   - Adding or removing detail as appropriate
-   - Modifying language complexity
-   - Adding context or removing redundant explanations
-   - Adjusting examples to match the level
-
-4. Maintain the same structure and organization as the original.
-
-5. Keep technical accuracy - only adjust presentation, not facts.
-
-Original Content:
+Content:
 {request.content}
 
-Return ONLY the personalized content with all formatting preserved exactly."""
+Return personalized content with formatting preserved."""
 
         # Use generate_content with timeout handling and retry
         try:
-            # Limit content length to avoid timeout
+            # Limit content length to avoid timeout (max 4000 chars for input)
+            # This is more conservative to ensure it works within timeout limits
             content_to_personalize = request.content
-            if len(content_to_personalize) > 10000:
-                # For very long content, take first 10000 chars and add note
-                content_to_personalize = content_to_personalize[:10000] + "\n\n[Content truncated for processing...]"
-                prompt = prompt.replace(request.content, content_to_personalize)
+            MAX_INPUT_LENGTH = 4000
+            if len(content_to_personalize) > MAX_INPUT_LENGTH:
+                # For very long content, take first part
+                content_to_personalize = content_to_personalize[:MAX_INPUT_LENGTH]
             
-            result = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.4,
-                    "max_output_tokens": 16000,
-                    "timeout": 60  # 60 second timeout
-                }
-            )
+            # Simplified, shorter prompt to reduce processing time
+            prompt = f"""Personalize this content for {level_info['name']} level learners.
+
+Guidelines:
+{level_info['guidance']}
+
+Rules:
+- Keep ALL markdown formatting (# * ` [] etc.)
+- Keep code blocks unchanged
+- Keep URLs unchanged
+- Adjust explanations for {level_info['name']} level
+- Maintain structure and accuracy
+
+Content:
+{content_to_personalize}
+
+Return personalized content with formatting preserved."""
             
-            if not result or not result.text:
-                raise HTTPException(status_code=500, detail="Empty response from AI model")
+            # Retry logic for rate limiting
+            max_retries = 3
+            retry_delay = 2  # Start with 2 seconds
+            last_error = None
+            personalized_content = None
             
-            personalized_content = result.text
+            for attempt in range(max_retries):
+                try:
+                    # Use faster generation config with reduced tokens
+                    result = model.generate_content(
+                        prompt,
+                        generation_config={
+                            "temperature": 0.3,  # Lower temperature for faster, more consistent output
+                            "max_output_tokens": 6000,  # Reduced to speed up generation
+                            "top_p": 0.95,
+                            "top_k": 40,
+                        }
+                    )
+                    
+                    if not result or not result.text:
+                        raise HTTPException(status_code=500, detail="Empty response from AI model")
+                    
+                    personalized_content = result.text
+                    
+                    # Validate response
+                    if not personalized_content or len(personalized_content.strip()) < 10:
+                        raise HTTPException(status_code=500, detail="Generated content is too short or invalid")
+                    
+                    # Success, break out of retry loop
+                    break
+                    
+                except Exception as gen_error:
+                    error_msg = str(gen_error).lower()
+                    last_error = gen_error
+                    
+                    # Check for quota/rate limit errors
+                    if "429" in error_msg or "quota" in error_msg or "rate limit" in error_msg:
+                        # Extract retry delay from error if available
+                        if "retry in" in error_msg or "retry_delay" in error_msg:
+                            # Try to extract seconds from error message
+                            import re
+                            delay_match = re.search(r'retry in ([\d.]+)s', error_msg, re.IGNORECASE)
+                            if delay_match:
+                                retry_delay = float(delay_match.group(1)) + 1  # Add 1 second buffer
+                            else:
+                                retry_delay = retry_delay * (2 ** attempt)  # Exponential backoff
+                        
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ Rate limit hit, retrying in {retry_delay:.1f} seconds (attempt {attempt + 1}/{max_retries})")
+                            await asyncio.sleep(retry_delay)
+                            continue
+                        else:
+                            # Final attempt failed
+                            raise HTTPException(
+                                status_code=429,
+                                detail="API quota exceeded. Free tier allows 20 requests per day per model. Please wait or upgrade your API plan. Retry after some time."
+                            )
+                    elif "timeout" in error_msg or "504" in error_msg or "timed out" in error_msg:
+                        raise HTTPException(
+                            status_code=504, 
+                            detail="The request timed out. Please try again with shorter content or try again later."
+                        )
+                    elif "invalid" in error_msg or "empty" in error_msg:
+                        raise HTTPException(
+                            status_code=500, 
+                            detail="Failed to generate personalized content. Please try again."
+                        )
+                    else:
+                        # Other errors, don't retry
+                        raise
             
-            # Validate response
-            if not personalized_content or len(personalized_content.strip()) < 10:
-                raise HTTPException(status_code=500, detail="Generated content is too short or invalid")
+            # Check if we got content
+            if not personalized_content:
+                if last_error:
+                    raise last_error
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to generate personalized content")
                 
+        except HTTPException:
+            raise
         except Exception as gen_error:
             error_msg = str(gen_error).lower()
-            if "timeout" in error_msg or "504" in error_msg or "timed out" in error_msg:
+            if "429" in error_msg or "quota" in error_msg or "rate limit" in error_msg:
+                raise HTTPException(
+                    status_code=429,
+                    detail="API quota exceeded. Free tier allows 20 requests per day per model. Please wait or upgrade your API plan."
+                )
+            elif "timeout" in error_msg or "504" in error_msg:
                 raise HTTPException(
                     status_code=504, 
                     detail="The request timed out. Please try again with shorter content or try again later."
-                )
-            elif "quota" in error_msg or "429" in error_msg or "rate limit" in error_msg:
-                raise HTTPException(
-                    status_code=429, 
-                    detail="API quota exceeded. Please try again later."
-                )
-            elif "invalid" in error_msg or "empty" in error_msg:
-                raise HTTPException(
-                    status_code=500, 
-                    detail="Failed to generate personalized content. Please try again."
                 )
             else:
                 raise HTTPException(
@@ -409,23 +456,78 @@ Original Content:
 
 Return ONLY the translated content with all formatting and line breaks preserved exactly."""
 
-        result = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.3,
-                "max_output_tokens": 16000
-            }
-        )
-        translated_content = result.text
+        # Retry logic for rate limiting
+        max_retries = 3
+        retry_delay = 2  # Start with 2 seconds
+        last_error = None
         
-        return {
-            "translatedContent": translated_content,
-            "targetLanguage": target_lang
-        }
+        for attempt in range(max_retries):
+            try:
+                result = model.generate_content(
+                    prompt,
+                    generation_config={
+                        "temperature": 0.3,
+                        "max_output_tokens": 16000
+                    }
+                )
+                translated_content = result.text
+                
+                return {
+                    "translatedContent": translated_content,
+                    "targetLanguage": target_lang
+                }
+            except Exception as gen_error:
+                error_str = str(gen_error).lower()
+                last_error = gen_error
+                
+                # Check for quota/rate limit errors
+                if "429" in error_str or "quota" in error_str or "rate limit" in error_str:
+                    # Extract retry delay from error if available
+                    if "retry in" in error_str or "retry_delay" in error_str:
+                        # Try to extract seconds from error message
+                        import re
+                        delay_match = re.search(r'retry in ([\d.]+)s', error_str, re.IGNORECASE)
+                        if delay_match:
+                            retry_delay = float(delay_match.group(1)) + 1  # Add 1 second buffer
+                        else:
+                            retry_delay = retry_delay * (2 ** attempt)  # Exponential backoff
+                    
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ Rate limit hit, retrying in {retry_delay:.1f} seconds (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(retry_delay)
+                        continue
+                    else:
+                        # Final attempt failed
+                        raise HTTPException(
+                            status_code=429,
+                            detail="API quota exceeded. Free tier allows 20 requests per day per model. Please wait or upgrade your API plan. Retry after some time."
+                        )
+                else:
+                    # Other errors, don't retry
+                    raise
+        
+        # Should not reach here, but just in case
+        if last_error:
+            raise last_error
+            
     except HTTPException:
         raise
     except Exception as e:
         error_detail = str(e)
-        if 'GEMINI_API_KEY' in error_detail:
+        error_lower = error_detail.lower()
+        
+        # Handle specific error types
+        if '429' in error_lower or 'quota' in error_lower or 'rate limit' in error_lower:
+            raise HTTPException(
+                status_code=429,
+                detail="API quota exceeded. Free tier allows 20 requests per day per model. Please wait or upgrade your API plan."
+            )
+        elif 'GEMINI_API_KEY' in error_detail:
             error_detail = "GEMINI_API_KEY not configured. Please set it in environment variables."
-        raise HTTPException(status_code=500, detail=f"Translation failed: {error_detail}")
+        elif 'timeout' in error_lower or '504' in error_lower:
+            raise HTTPException(
+                status_code=504,
+                detail="Translation request timed out. Please try again with shorter content."
+            )
+        
+        raise HTTPException(status_code=500, detail=f"Translation failed: {error_detail[:500]}")

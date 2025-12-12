@@ -4,28 +4,57 @@ from psycopg2.extras import RealDictCursor
 from typing import Optional, List, Dict
 from datetime import datetime
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 
 load_dotenv()
 
 class Database:
-    """Database client for Neon Postgres."""
+    """Database client for Supabase Postgres."""
     def __init__(self):
+        # Try DATABASE_URL first
         self.connection_string = os.getenv("DATABASE_URL")
+        
+        # If not set, build from individual env vars
         if not self.connection_string:
-            print("Warning: DATABASE_URL not set. Database features will be disabled.")
-            self.conn = None
-        else:
-            self._init_tables()
+            user = os.getenv("DB_USER") or os.getenv("user") or "postgres"
+            password = os.getenv("DB_PASSWORD") or os.getenv("password") or ""
+            host = os.getenv("DB_HOST") or os.getenv("host") or ""
+            port = os.getenv("DB_PORT") or os.getenv("port") or "5432"
+            dbname = os.getenv("DB_NAME") or os.getenv("dbname") or "postgres"
+            
+            if host and password:
+                # URL encode password to handle special characters
+                encoded_password = quote_plus(password)
+                self.connection_string = f"postgresql://{user}:{encoded_password}@{host}:{port}/{dbname}?sslmode=require"
+            else:
+                print("⚠️ Warning: Database connection parameters not set. Database features will be disabled.")
+                self.connection_string = None
+        
+        if self.connection_string:
+            # Test connection and initialize tables
+            try:
+                test_conn = self._get_connection()
+                if test_conn:
+                    print("✅ Database connection successful!")
+                    test_conn.close()
+                    self._init_tables()
+                else:
+                    print("❌ Database connection failed!")
+            except Exception as e:
+                print(f"❌ Database connection error: {e}")
+                self.connection_string = None
     
     def _get_connection(self):
         """Get database connection."""
         if not self.connection_string:
             return None
         try:
-            return psycopg2.connect(self.connection_string)
+            # Supabase requires SSL, ensure sslmode is set
+            conn = psycopg2.connect(self.connection_string)
+            return conn
         except Exception as e:
-            print(f"Error connecting to database: {e}")
-            return None
+            print(f"❌ Error connecting to database: {e}")
+            raise  # Raise exception instead of returning None
     
     def _init_tables(self):
         """Initialize database tables."""

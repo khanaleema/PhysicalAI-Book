@@ -127,8 +127,21 @@ function injectPersonalizeButton(articleElement: Element, chapterPath: string) {
     articleElement.insertBefore(buttonContainer, articleElement.firstChild);
   }
 
-  // Get content for personalization
-  const content = articleElement.innerText || articleElement.textContent || '';
+  // Get content for personalization - limit to first 4000 characters to avoid timeout
+  const fullContent = articleElement.innerText || articleElement.textContent || '';
+  const MAX_CONTENT_LENGTH = 4000;
+  let content = fullContent;
+  if (fullContent.length > MAX_CONTENT_LENGTH) {
+    // Try to get a complete section by finding the last paragraph break
+    let truncated = fullContent.substring(0, MAX_CONTENT_LENGTH);
+    const lastParagraph = truncated.lastIndexOf('\n\n');
+    if (lastParagraph > MAX_CONTENT_LENGTH * 0.7) {
+      // If we found a paragraph break in the last 30%, use it
+      content = truncated.substring(0, lastParagraph);
+    } else {
+      content = truncated;
+    }
+  }
 
   // Render button using React
   Promise.all([

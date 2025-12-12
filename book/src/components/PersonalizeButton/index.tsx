@@ -35,13 +35,9 @@ export default function PersonalizeButton({
   }, [chapterPath]);
 
   const handlePersonalize = () => {
-    // If user already has a level and content is available, personalize directly
-    if (userLevel && content && chapterPath && !isPersonalized) {
-      personalizeContent(content, userLevel, chapterPath);
-    } else {
-      // Otherwise, open modal to select/change level
-      setIsModalOpen(true);
-    }
+    // Always show modal to let user select/confirm level
+    // This ensures user can see and change their level preference
+    setIsModalOpen(true);
   };
 
   const handleLevelSelect = async (level: string) => {
@@ -65,6 +61,24 @@ export default function PersonalizeButton({
         localStorage.setItem(`original_${path}`, originalContent);
       }
 
+      // Limit content size to avoid timeout (max 4000 characters)
+      // Reduced to ensure it works within timeout limits
+      const MAX_CONTENT_LENGTH = 4000;
+      let contentToSend = content;
+      if (content.length > MAX_CONTENT_LENGTH) {
+        // Take first part - prioritize main content
+        // Try to get a complete section by finding the last paragraph break
+        let truncated = content.substring(0, MAX_CONTENT_LENGTH);
+        const lastParagraph = truncated.lastIndexOf('\n\n');
+        if (lastParagraph > MAX_CONTENT_LENGTH * 0.7) {
+          // If we found a paragraph break in the last 30%, use it
+          contentToSend = truncated.substring(0, lastParagraph);
+        } else {
+          contentToSend = truncated;
+        }
+        console.warn(`Content truncated from ${content.length} to ${contentToSend.length} characters to avoid timeout`);
+      }
+
       const apiUrl = typeof window !== 'undefined' 
         ? (window as any).CHATBOT_API_URL || 'https://aleemakhan-ai-book-be.hf.space'
         : 'https://aleemakhan-ai-book-be.hf.space';
@@ -75,7 +89,7 @@ export default function PersonalizeButton({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          content,
+          content: contentToSend,
           userLevel: level,
           chapterPath: path,
         }),

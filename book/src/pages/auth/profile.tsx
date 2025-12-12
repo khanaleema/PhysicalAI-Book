@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '@theme/Layout';
 import { useHistory } from '@docusaurus/router';
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import { useApiUrl } from '@site/src/lib/api';
 import styles from './auth.module.css';
 
 interface BackgroundInfo {
@@ -30,6 +31,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(false);
   const history = useHistory();
   const baseUrl = useBaseUrl('/');
+  const apiUrl = useApiUrl();
 
   const programmingLanguagesOptions = [
     'Python', 'C++', 'JavaScript/TypeScript', 'Java', 'ROS 2', 
@@ -69,17 +71,44 @@ export default function Profile() {
     setLoading(true);
 
     try {
-      // Update user profile (for now, just update localStorage)
-      // In production, you'd call an API endpoint
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication required. Please sign in again.');
+        setTimeout(() => {
+          history.push('/auth/signin');
+        }, 2000);
+        return;
+      }
+
+      // Call API to update profile
+      const response = await fetch(`${apiUrl}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          background: background
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to update profile' }));
+        throw new Error(errorData.detail || 'Failed to update profile');
+      }
+
+      const updatedUserData = await response.json();
+      
+      // Update localStorage with new data
       const updatedUser = {
         ...user,
-        name: formData.name,
-        email: formData.email,
-        background: background
+        name: updatedUserData.name,
+        background: updatedUserData.background
       };
       
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      localStorage.setItem('userBackground', JSON.stringify(background));
+      localStorage.setItem('userBackground', JSON.stringify(updatedUserData.background));
       
       setUser(updatedUser);
       setSuccess('Profile updated successfully!');
@@ -89,8 +118,8 @@ export default function Profile() {
         // Navigate to docs/preface with baseUrl
         window.location.href = `${baseUrl}docs/preface/`;
       }, 2000);
-    } catch (err) {
-      setError('Failed to update profile. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }

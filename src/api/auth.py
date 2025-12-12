@@ -47,13 +47,10 @@ def create_token(user_id: str) -> str:
 async def sign_up(request: SignUpRequest):
     db = Database()
     
-    # Check if user exists
+    # Get database connection - will raise exception if fails
     conn = db._get_connection()
     if not conn:
-        # Fallback: Use simple auth if database is not available
-        print("⚠️ Database not available, falling back to simple auth")
-        from src.api.simple_auth import sign_up as simple_sign_up
-        return await simple_sign_up(request)
+        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
     
     try:
         with conn.cursor() as cur:
@@ -96,14 +93,8 @@ async def sign_up(request: SignUpRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Sign-up error: {e}")
-        # Fallback to simple auth on database error
-        print("⚠️ Database error, falling back to simple auth")
-        try:
-            from src.api.simple_auth import sign_up as simple_sign_up
-            return await simple_sign_up(request)
-        except Exception as fallback_error:
-            raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
+        print(f"❌ Sign-up error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
     finally:
         if conn:
             conn.close()
@@ -114,10 +105,7 @@ async def sign_in(request: SignInRequest):
     
     conn = db._get_connection()
     if not conn:
-        # Fallback: Use simple auth if database is not available
-        print("⚠️ Database not available, falling back to simple auth")
-        from src.api.simple_auth import sign_in as simple_sign_in
-        return await simple_sign_in(request)
+        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
     
     try:
         with conn.cursor() as cur:
@@ -148,14 +136,8 @@ async def sign_in(request: SignInRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Sign-in error: {e}")
-        # Fallback to simple auth on database error
-        print("⚠️ Database error, falling back to simple auth")
-        try:
-            from src.api.simple_auth import sign_in as simple_sign_in
-            return await simple_sign_in(request)
-        except Exception as fallback_error:
-            raise HTTPException(status_code=500, detail=f"Failed to sign in: {str(e)}")
+        print(f"❌ Sign-in error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sign in: {str(e)}")
     finally:
         if conn:
             conn.close()
@@ -196,4 +178,80 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Token expired")
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+class UpdateProfileRequest(BaseModel):
+    name: Optional[str] = None
+    background: Optional[dict] = None
+
+@router.put("/profile")
+async def update_profile(
+    request: UpdateProfileRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=["HS256"])
+        user_id = payload["user_id"]
+        
+        db = Database()
+        conn = db._get_connection()
+        if not conn:
+            raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
+        
+        try:
+            with conn.cursor() as cur:
+                # Build update query dynamically
+                updates = []
+                values = []
+                
+                if request.name is not None:
+                    updates.append("name = %s")
+                    values.append(request.name)
+                
+                if request.background is not None:
+                    updates.append("background = %s")
+                    values.append(json.dumps(request.background))
+                
+                if not updates:
+                    raise HTTPException(status_code=400, detail="No fields to update")
+                
+                updates.append("updated_at = %s")
+                values.append(datetime.utcnow())
+                values.append(user_id)
+                
+                query = f"""
+                    UPDATE users 
+                    SET {', '.join(updates)}
+                    WHERE id = %s
+                """
+                
+                cur.execute(query, values)
+                conn.commit()
+                
+                # Fetch updated user
+                cur.execute("""
+                    SELECT id, name, email, background 
+                    FROM users WHERE id = %s
+                """, (user_id,))
+                user = cur.fetchone()
+                
+                if not user:
+                    raise HTTPException(status_code=404, detail="User not found")
+                
+                background = json.loads(user[3]) if user[3] else {}
+                
+                return {
+                    "id": user[0],
+                    "name": user[1],
+                    "email": user[2],
+                    "background": background
+                }
+        finally:
+            conn.close()
+    except HTTPException:
+        raise
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except Exception as e:
+        print(f"❌ Update profile error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
 
