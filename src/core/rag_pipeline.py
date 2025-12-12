@@ -32,10 +32,12 @@ class LLMProvider:
                 
                 # SIMPLE APPROACH: Just try the most common working models one by one
                 # Test each model with actual API call before accepting
+                # Updated to use current valid Gemini model names
                 working_models = [
-                    "gemini-1.5-flash",
-                    "gemini-1.5-pro", 
-                    "gemini-pro"
+                    "gemini-1.5-flash-latest",  # Latest version of 1.5-flash
+                    "gemini-1.5-flash",        # Fallback to specific version
+                    "gemini-1.5-pro-latest",   # Latest version of 1.5-pro
+                    "gemini-1.5-pro"           # Fallback to specific version
                 ]
                 
                 # Add env model to front if specified
