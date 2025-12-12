@@ -41,8 +41,15 @@ class Database:
                 else:
                     print("❌ Database connection failed!")
             except Exception as e:
-                print(f"❌ Database connection error: {e}")
-                self.connection_string = None
+                error_str = str(e).lower()
+                if "network is unreachable" in error_str:
+                    print(f"⚠️ Database connection failed (Network unreachable).")
+                    print(f"   This might be an IPv6/IPv4 issue. The app will continue but database features will be disabled.")
+                    print(f"   To fix: Use Supabase connection pooler (port 6543) or enable IPv4 add-on in Supabase.")
+                else:
+                    print(f"❌ Database connection error: {e}")
+                # Don't disable connection_string - let it try again on each request with pooler fallback
+                # self.connection_string = None
     
     def _get_connection(self):
         """Get database connection with fallback to connection pooler."""
