@@ -1,4 +1,5 @@
 import React from 'react';
+import PersonalizeButton from '../PersonalizeButton';
 
 interface ChapterActionsProps {
   chapterPath: string;
@@ -6,7 +7,17 @@ interface ChapterActionsProps {
 }
 
 export default function ChapterActions({ chapterPath, content }: ChapterActionsProps) {
-  // Personalize and Translate functionality removed
-  return null;
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <PersonalizeButton
+        chapterPath={chapterPath}
+        content={content}
+        onPersonalize={(personalizedContent) => {
+          localStorage.setItem(`personalized_${chapterPath}`, personalizedContent);
+          window.location.reload();
+        }}
+      />
+    </div>
+  );
 }
 

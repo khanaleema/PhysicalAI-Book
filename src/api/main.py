@@ -127,6 +127,152 @@ async def health_check():
     }
     return status
 
+# Personalize endpoint - added directly to main.py
+class PersonalizeRequest(BaseModel):
+    content: str
+    userLevel: str = Field(default="intermediate", alias="user_level")
+    chapterPath: Optional[str] = Field(default=None, alias="chapter_path")
+    
+    class Config:
+        populate_by_name = True
+
+@app.post("/personalize", summary="Personalize content based on user level.")
+async def personalize_content(request: PersonalizeRequest):
+    """Personalize chapter content based on user experience level (beginner, intermediate, advanced)."""
+    try:
+        # Validate input
+        if not request.content or len(request.content.strip()) < 10:
+            raise HTTPException(status_code=400, detail="Content is too short or empty")
+        
+        # Validate user level
+        valid_levels = ["beginner", "intermediate", "advanced"]
+        user_level = getattr(request, 'userLevel', None) or getattr(request, 'user_level', None) or "intermediate"
+        if user_level not in valid_levels:
+            raise HTTPException(status_code=400, detail=f"Invalid user level. Must be one of: {valid_levels}")
+        
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+        
+        # Level-specific instructions
+        level_instructions = {
+            "beginner": {
+                "name": "Beginner",
+                "guidance": """
+1. Simplify complex concepts - break down technical terms into everyday language
+2. Add more context and background information
+3. Use analogies and real-world examples
+4. Avoid advanced mathematical formulations unless necessary
+5. Explain acronyms and technical terms on first use
+6. Add more step-by-step explanations
+7. Include "Why this matters" sections
+8. Use simpler vocabulary while maintaining accuracy
+""",
+            },
+            "intermediate": {
+                "name": "Intermediate",
+                "guidance": """
+1. Provide balanced explanations with both concepts and practical applications
+2. Include code examples and technical details
+3. Reference related concepts without over-explaining basics
+4. Use standard technical terminology
+5. Include practical examples and use cases
+6. Balance theory with implementation
+7. Add comparisons and trade-offs
+""",
+            },
+            "advanced": {
+                "name": "Advanced",
+                "guidance": """
+1. Include advanced technical details and mathematical formulations
+2. Reference cutting-edge research and state-of-the-art methods
+3. Discuss implementation nuances and edge cases
+4. Include performance considerations and optimizations
+5. Reference related advanced topics and research papers
+6. Provide deeper insights into design decisions
+7. Include advanced algorithms and data structures
+8. Discuss scalability and production considerations
+""",
+            },
+        }
+        
+        level_info = level_instructions.get(user_level, level_instructions["intermediate"])
+        
+        # Remove proxy env vars before importing Gemini
+        for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
+            os.environ.pop(key, None)
+        
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        prompt = f"""You are an expert educational content personalization system. Your task is to personalize technical content for a {level_info['name']} level learner.
+
+USER LEVEL: {level_info['name']}
+
+PERSONALIZATION GUIDELINES:
+{level_info['guidance']}
+
+CRITICAL REQUIREMENTS:
+
+1. Preserve ALL markdown formatting EXACTLY:
+   - Headings: Keep # ## ### exactly as they are
+   - Code blocks: Keep ```language``` format exactly, preserve code inside
+   - Inline code: Keep `code` format exactly
+   - Lists: Keep - * 1. 2. format exactly, maintain indentation
+   - Links: Keep [text](url) format exactly
+   - Bold: Keep **text** format exactly
+   - Italic: Keep *text* format exactly
+   - Blockquotes: Keep > format exactly
+   - Tables: Keep | column | format exactly, preserve table structure
+   - Horizontal rules: Keep --- exactly
+   - Line breaks: Preserve ALL line breaks and paragraph spacing
+
+2. DO NOT change:
+   - Markdown syntax symbols (# * - ` > | etc.)
+   - Code in code blocks (keep code as-is)
+   - URLs in links (keep URLs as-is)
+   - Mathematical formulas and equations
+   - Technical terms that are standard in the field
+
+3. Personalize by:
+   - Adjusting explanations to match the level
+   - Adding or removing detail as appropriate
+   - Modifying language complexity
+   - Adding context or removing redundant explanations
+   - Adjusting examples to match the level
+
+4. Maintain the same structure and organization as the original.
+
+5. Keep technical accuracy - only adjust presentation, not facts.
+
+Original Content:
+{request.content}
+
+Return ONLY the personalized content with all formatting preserved exactly."""
+
+        result = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.4,
+                "max_output_tokens": 16000
+            }
+        )
+        personalized_content = result.text
+        
+        return {
+            "personalizedContent": personalized_content,
+            "userLevel": user_level,
+            "chapterPath": request.chapterPath
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_detail = str(e)
+        if 'GEMINI_API_KEY' in error_detail:
+            error_detail = "GEMINI_API_KEY not configured. Please set it in environment variables."
+        raise HTTPException(status_code=500, detail=f"Personalization failed: {error_detail}")
+
 # Translate endpoint - added directly to main.py for reliability
 class TranslateRequest(BaseModel):
     content: str
