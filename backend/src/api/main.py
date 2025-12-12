@@ -13,7 +13,14 @@ from src.data.ingestion import VectorDBClient
 from src.core.database import Database
 from src.api.auth import router as auth_router
 # Import translate router
-from src.api.translate import router as translate_router
+try:
+    from src.api.translate import router as translate_router
+    print("✅ Translate router imported successfully")
+except Exception as e:
+    print(f"❌ Failed to import translate router: {e}")
+    import traceback
+    traceback.print_exc()
+    translate_router = None
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,7 +47,12 @@ app.add_middleware(
 
 # Include routers - Database-based auth (requires DATABASE_URL)
 app.include_router(auth_router)
-app.include_router(translate_router)
+print(f"✅ Auth router included")
+if translate_router:
+    app.include_router(translate_router)
+    print(f"✅ Translate router included with prefix: {translate_router.prefix}")
+else:
+    print("⚠️ Translate router not included - import failed")
 
 # Initialize RAG components with retry logic and lazy initialization
 import time
