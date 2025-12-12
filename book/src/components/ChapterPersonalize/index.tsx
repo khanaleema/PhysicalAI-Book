@@ -19,9 +19,8 @@ export default function ChapterPersonalize() {
       normalizedPath = path.replace(baseUrl, '/');
     }
     
+    // Include all docs pages including preface
     const isDocsPage = normalizedPath.startsWith('/docs/') && 
-                       normalizedPath !== '/docs/preface' &&
-                       normalizedPath !== '/docs/preface/' &&
                        !normalizedPath.endsWith('/index') &&
                        !normalizedPath.endsWith('/index/') &&
                        normalizedPath !== '/docs/' &&
@@ -82,19 +81,22 @@ function injectPersonalizeButton(articleElement: Element, chapterPath: string) {
     return;
   }
 
-  // Create container for button
+  // Create container for button - Purple theme matching UI
   const buttonContainer = document.createElement('div');
   buttonContainer.setAttribute('data-personalize-button', 'true');
   buttonContainer.setAttribute('id', 'personalize-button-container');
   buttonContainer.style.cssText = `
-    margin-bottom: 24px;
-    margin-top: 16px;
-    padding: 16px;
-    background: var(--ifm-color-emphasis-100);
-    border-radius: 8px;
-    border: 1px solid var(--ifm-color-emphasis-200);
+    margin-bottom: 32px;
+    margin-top: 24px;
+    padding: 20px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    border: none;
     width: 100%;
     box-sizing: border-box;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    position: relative;
+    overflow: hidden;
   `;
 
   // Create React root

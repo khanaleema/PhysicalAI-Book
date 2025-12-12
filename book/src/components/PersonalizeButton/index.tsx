@@ -98,30 +98,29 @@ export default function PersonalizeButton({
 
   return (
     <>
-      <div style={{ marginBottom: '8px' }}>
-        <button
-          className={styles.personalizeButton}
-          onClick={handlePersonalize}
-          title={isPersonalized ? 'Content is personalized' : 'Personalize this chapter'}
-        >
-          <span className={styles.buttonIcon}>✨</span>
-          <span className={styles.buttonText}>
-            {isPersonalized ? 'Personalized' : 'Personalize'}
-          </span>
-          {userLevel && (
-            <span className={styles.levelBadge}>{userLevel}</span>
-          )}
-        </button>
-      </div>
+      <button
+        className={styles.personalizeButton}
+        onClick={handlePersonalize}
+        title={isPersonalized ? 'Content is personalized' : 'Personalize this chapter'}
+      >
+        <span className={styles.buttonIcon}>✨</span>
+        <span className={styles.buttonText}>
+          {isPersonalized ? 'Personalized for Me' : 'Personalize for Me'}
+        </span>
+        {userLevel && (
+          <span className={styles.levelBadge}>{userLevel}</span>
+        )}
+      </button>
       
       {!isLoggedIn && (
         <div style={{ 
-          padding: '12px', 
-          background: 'var(--ifm-color-warning-contrast-background)', 
+          marginTop: '12px',
+          padding: '12px 16px', 
+          background: 'rgba(255, 255, 255, 0.1)', 
           borderRadius: '8px',
-          marginBottom: '16px',
-          fontSize: '14px',
-          color: 'var(--ifm-color-warning-contrast-foreground)'
+          fontSize: '13px',
+          color: 'rgba(255, 255, 255, 0.9)',
+          lineHeight: '1.5'
         }}>
           💡 <strong>Sign up</strong> to personalize content based on your learning level (Beginner, Intermediate, or Advanced)
         </div>
