@@ -71,8 +71,34 @@ export default function Profile() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
+      // Check for token in both possible keys (authToken or token)
+      let token = localStorage.getItem('authToken') || localStorage.getItem('token');
       if (!token) {
+        // If no token, try to get from user object
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const userData = JSON.parse(userStr);
+          // If user exists but no token, fallback to localStorage update only
+          console.log('⚠️ No token found, updating localStorage only');
+          const updatedUser = {
+            ...user,
+            name: formData.name,
+            background: background
+          };
+          
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          localStorage.setItem('userBackground', JSON.stringify(background));
+          
+          setUser(updatedUser);
+          setSuccess('Profile updated successfully! (Saved locally)');
+          
+          setTimeout(() => {
+            setSuccess('');
+            window.location.href = 'https://khanaleema.github.io/PhysicalAI-Book/docs/preface/';
+          }, 1500);
+          return;
+        }
+        
         setError('Authentication required. Please sign in again.');
         setTimeout(() => {
           history.push('/auth/signin');
