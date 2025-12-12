@@ -45,14 +45,33 @@ class Database:
                 self.connection_string = None
     
     def _get_connection(self):
-        """Get database connection."""
+        """Get database connection with fallback to connection pooler."""
         if not self.connection_string:
             return None
+        
+        # Try direct connection first
         try:
             # Supabase requires SSL, ensure sslmode is set
-            conn = psycopg2.connect(self.connection_string)
+            conn = psycopg2.connect(self.connection_string, connect_timeout=5)
             return conn
         except Exception as e:
+            error_str = str(e).lower()
+            
+            # If IPv6/network unreachable, try connection pooler (IPv4)
+            if "network is unreachable" in error_str or "ipv6" in error_str:
+                print(f"⚠️ Direct connection failed, trying connection pooler (IPv4)...")
+                try:
+                    # Try to use connection pooler - replace port 5432 with 6543 (session pooler)
+                    # or use pooler connection string
+                    pooler_url = self.connection_string.replace(":5432/", ":6543/")
+                    if pooler_url != self.connection_string:
+                        conn = psycopg2.connect(pooler_url, connect_timeout=5)
+                        print(f"✅ Connected via connection pooler!")
+                        return conn
+                except Exception as pooler_error:
+                    print(f"⚠️ Connection pooler also failed: {pooler_error}")
+            
+            # If still failing, raise the original error
             print(f"❌ Error connecting to database: {e}")
             raise  # Raise exception instead of returning None
     
