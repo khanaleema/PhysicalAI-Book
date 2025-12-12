@@ -50,10 +50,10 @@ async def sign_up(request: SignUpRequest):
     # Get database connection - returns None if fails (graceful degradation)
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(
-            status_code=503, 
-            detail="Database service is currently unavailable. This might be due to network connectivity issues. Please try again later or contact support."
-        )
+        # Fallback to simple auth if database is not available
+        print("⚠️ Database not available, falling back to simple auth")
+        from src.api.simple_auth import sign_up as simple_sign_up
+        return await simple_sign_up(request)
     
     try:
         with conn.cursor() as cur:
@@ -108,10 +108,10 @@ async def sign_in(request: SignInRequest):
     
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(
-            status_code=503, 
-            detail="Database service is currently unavailable. This might be due to network connectivity issues. Please try again later or contact support."
-        )
+        # Fallback to simple auth if database is not available
+        print("⚠️ Database not available, falling back to simple auth")
+        from src.api.simple_auth import sign_in as simple_sign_in
+        return await simple_sign_in(request)
     
     try:
         with conn.cursor() as cur:
