@@ -78,9 +78,11 @@ class Database:
                 except Exception as pooler_error:
                     print(f"⚠️ Connection pooler also failed: {pooler_error}")
             
-            # If still failing, raise the original error
+            # If still failing, return None instead of raising
+            # This allows the app to continue without database
             print(f"❌ Error connecting to database: {e}")
-            raise  # Raise exception instead of returning None
+            print(f"   Database features will be disabled. App will continue to work.")
+            return None  # Return None instead of raising to allow graceful degradation
     
     def _init_tables(self):
         """Initialize database tables."""

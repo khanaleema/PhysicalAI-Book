@@ -47,10 +47,13 @@ def create_token(user_id: str) -> str:
 async def sign_up(request: SignUpRequest):
     db = Database()
     
-    # Get database connection - will raise exception if fails
+    # Get database connection - returns None if fails (graceful degradation)
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
+        raise HTTPException(
+            status_code=503, 
+            detail="Database service is currently unavailable. This might be due to network connectivity issues. Please try again later or contact support."
+        )
     
     try:
         with conn.cursor() as cur:
@@ -105,7 +108,10 @@ async def sign_in(request: SignInRequest):
     
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
+        raise HTTPException(
+            status_code=503, 
+            detail="Database service is currently unavailable. This might be due to network connectivity issues. Please try again later or contact support."
+        )
     
     try:
         with conn.cursor() as cur:
