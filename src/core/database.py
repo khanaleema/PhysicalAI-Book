@@ -57,72 +57,41 @@ class Database:
             return None
         
         # Parse connection string to extract components
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        from urllib.parse import urlparse, urlunparse
         
         try:
             parsed = urlparse(self.connection_string)
-            query_params = parse_qs(parsed.query)
-            
-            # Force IPv4 by using the pooler hostname format
-            # Supabase pooler uses: aws-0-[region].pooler.supabase.com
-            # But we can also try using the direct IPv4 address if available
-            
-            # Strategy 1: Try connection pooler first (usually has IPv4)
             pooler_host = parsed.hostname
+            
+            # Strategy 1: Try connection pooler first (port 6543 - usually has IPv4)
             if pooler_host and "supabase.co" in pooler_host:
-                # Try to use pooler connection string
-                # Replace db.xxx.supabase.co with aws-0-[region].pooler.supabase.com
-                # But we need region info, so let's try port 6543 first
                 pooler_url = self.connection_string.replace(":5432/", ":6543/")
-                
                 try:
-                    conn = psycopg2.connect(pooler_url, connect_timeout=10)
+                    conn = psycopg2.connect(pooler_url, connect_timeout=5)
                     print(f"✅ Connected via connection pooler (port 6543)!")
                     return conn
                 except Exception as pooler_error:
                     print(f"⚠️ Connection pooler (6543) failed: {str(pooler_error)[:100]}")
             
-            # Strategy 2: Try direct connection with IPv4 preference
-            # Add connect_timeout and try to force IPv4 via connection parameters
+            # Strategy 2: Try direct connection
             try:
-                # Try with explicit IPv4 preference
-                conn = psycopg2.connect(
-                    self.connection_string, 
-                    connect_timeout=10,
-                    # Try to use IPv4 by setting family parameter if available
-                )
+                conn = psycopg2.connect(self.connection_string, connect_timeout=5)
                 print(f"✅ Connected via direct connection!")
                 return conn
             except Exception as direct_error:
                 error_str = str(direct_error).lower()
-                if "network is unreachable" in error_str or "ipv6" in error_str:
-                    print(f"⚠️ Direct connection failed (IPv6 issue), trying alternative methods...")
-                    
-                    # Strategy 3: Try using pooler with transaction mode (port 5432 but pooler host)
-                    # Some Supabase setups have pooler on same port but different host
-                    try:
-                        # Try with pooler hostname pattern
-                        if pooler_host:
-                            # Extract project ref from hostname
-                            project_ref = pooler_host.split('.')[0].replace('db.', '')
-                            pooler_hostname = f"aws-0-us-east-1.pooler.supabase.com"  # Default region
-                            
-                            # Build pooler URL
-                            pooler_parsed = parsed._replace(netloc=f"{parsed.username}:{parsed.password}@{pooler_hostname}:6543")
-                            pooler_url_alt = urlunparse(pooler_parsed)
-                            
-                            conn = psycopg2.connect(pooler_url_alt, connect_timeout=10)
-                            print(f"✅ Connected via alternative pooler!")
-                            return conn
-                    except Exception as alt_error:
-                        print(f"⚠️ Alternative pooler also failed: {str(alt_error)[:100]}")
+                print(f"⚠️ Direct connection failed: {str(direct_error)[:100]}")
                 
-                # If all strategies fail, return None
-                print(f"❌ All connection attempts failed. Last error: {str(direct_error)[:100]}")
+                # If IPv6/network unreachable, all strategies will fail
+                # Return None to allow fallback
+                if "network is unreachable" in error_str or "ipv6" in error_str:
+                    print(f"   IPv6/IPv4 connectivity issue detected. Returning None for fallback.")
+                
                 return None
                 
         except Exception as e:
-            print(f"❌ Error parsing connection string: {e}")
+            # Any parsing or other error - return None for fallback
+            print(f"❌ Error in connection logic: {e}")
             return None
     
     def _init_tables(self):
