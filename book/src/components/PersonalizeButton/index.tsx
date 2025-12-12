@@ -95,10 +95,34 @@ export default function PersonalizeButton({
           if (onPersonalize) {
             onPersonalize(data.personalizedContent);
           }
+        } else {
+          throw new Error('No personalized content received');
         }
       } else {
-        console.error('Personalization failed:', await response.text());
-        alert('Failed to personalize content. Please try again.');
+        const errorText = await response.text();
+        let errorMessage = 'Failed to personalize content. Please try again.';
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.detail) {
+            errorMessage = errorData.detail;
+          }
+        } catch {
+          // Use default message
+        }
+        
+        console.error('Personalization failed:', errorText);
+        
+        // Show specific error messages
+        if (response.status === 504 || errorMessage.includes('timeout')) {
+          alert('Request timed out. The content might be too long. Please try again or select a shorter section.');
+        } else if (response.status === 429) {
+          alert('API quota exceeded. Please try again later.');
+        } else if (response.status === 404) {
+          alert('Personalization endpoint not found. Please check if the backend is running.');
+        } else {
+          alert(errorMessage);
+        }
       }
     } catch (error) {
       console.error('Error personalizing content:', error);
@@ -205,23 +229,36 @@ export default function PersonalizeButton({
     const originalContent = articleElement.querySelector('[data-original-content]');
     if (originalContent) {
       originalContent.style.display = 'block';
-      // Move children back to article
+      // Move children back to article in correct order
       const children = Array.from(originalContent.children);
-      children.forEach((child) => {
-        articleElement.appendChild(child);
-      });
+      const buttonContainer = articleElement.querySelector('[data-personalize-button]');
+      const header = articleElement.querySelector('header, .theme-doc-header');
+      
+      // Insert after button or header
+      let insertAfter = buttonContainer || header;
+      if (insertAfter && insertAfter.nextSibling) {
+        children.forEach((child) => {
+          articleElement.insertBefore(child, insertAfter.nextSibling);
+        });
+      } else {
+        children.forEach((child) => {
+          articleElement.appendChild(child);
+        });
+      }
       originalContent.remove();
     } else {
       // Try to restore from localStorage
       const original = localStorage.getItem(`original_${path}`);
       if (original) {
-        // This is a fallback - might not work perfectly
+        // Reload page to restore original
         window.location.reload();
+        return;
       }
     }
 
     // Clear personalized content from localStorage
     localStorage.removeItem(`personalized_${path}`);
+    // Reset state - don't show "Personalized" anymore
     setIsPersonalized(false);
   };
 
@@ -241,7 +278,7 @@ export default function PersonalizeButton({
           <span className={styles.buttonText}>
             {isLoading ? 'Personalizing...' : isPersonalized ? 'Personalized for Me' : 'Personalize for Me'}
           </span>
-          {userLevel && !isLoading && (
+          {userLevel && !isLoading && isPersonalized && (
             <span className={styles.levelBadge}>{userLevel}</span>
           )}
         </button>

@@ -50,7 +50,10 @@ async def sign_up(request: SignUpRequest):
     # Check if user exists
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
+        # Fallback: Use simple auth if database is not available
+        print("⚠️ Database not available, falling back to simple auth")
+        from src.api.simple_auth import sign_up as simple_sign_up
+        return await simple_sign_up(request)
     
     try:
         with conn.cursor() as cur:
@@ -94,7 +97,13 @@ async def sign_up(request: SignUpRequest):
         raise
     except Exception as e:
         print(f"Sign-up error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
+        # Fallback to simple auth on database error
+        print("⚠️ Database error, falling back to simple auth")
+        try:
+            from src.api.simple_auth import sign_up as simple_sign_up
+            return await simple_sign_up(request)
+        except Exception as fallback_error:
+            raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
     finally:
         if conn:
             conn.close()
@@ -105,7 +114,10 @@ async def sign_in(request: SignInRequest):
     
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
+        # Fallback: Use simple auth if database is not available
+        print("⚠️ Database not available, falling back to simple auth")
+        from src.api.simple_auth import sign_in as simple_sign_in
+        return await simple_sign_in(request)
     
     try:
         with conn.cursor() as cur:
@@ -137,7 +149,13 @@ async def sign_in(request: SignInRequest):
         raise
     except Exception as e:
         print(f"Sign-in error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to sign in: {str(e)}")
+        # Fallback to simple auth on database error
+        print("⚠️ Database error, falling back to simple auth")
+        try:
+            from src.api.simple_auth import sign_in as simple_sign_in
+            return await simple_sign_in(request)
+        except Exception as fallback_error:
+            raise HTTPException(status_code=500, detail=f"Failed to sign in: {str(e)}")
     finally:
         if conn:
             conn.close()

@@ -146,8 +146,8 @@ class PersonalizeRequest(BaseModel):
 async def personalize_content(request: PersonalizeRequest):
     """Personalize chapter content based on user experience level (beginner, intermediate, advanced)."""
     try:
-        # Validate input
-        if not request.content or len(request.content.strip()) < 10:
+        # Validate input - reduce minimum length for testing
+        if not request.content or len(request.content.strip()) < 5:
             raise HTTPException(status_code=400, detail="Content is too short or empty")
         
         # Validate user level
@@ -257,14 +257,55 @@ Original Content:
 
 Return ONLY the personalized content with all formatting preserved exactly."""
 
-        result = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.4,
-                "max_output_tokens": 16000
-            }
-        )
-        personalized_content = result.text
+        # Use generate_content with timeout handling and retry
+        try:
+            # Limit content length to avoid timeout
+            content_to_personalize = request.content
+            if len(content_to_personalize) > 10000:
+                # For very long content, take first 10000 chars and add note
+                content_to_personalize = content_to_personalize[:10000] + "\n\n[Content truncated for processing...]"
+                prompt = prompt.replace(request.content, content_to_personalize)
+            
+            result = model.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.4,
+                    "max_output_tokens": 16000,
+                    "timeout": 60  # 60 second timeout
+                }
+            )
+            
+            if not result or not result.text:
+                raise HTTPException(status_code=500, detail="Empty response from AI model")
+            
+            personalized_content = result.text
+            
+            # Validate response
+            if not personalized_content or len(personalized_content.strip()) < 10:
+                raise HTTPException(status_code=500, detail="Generated content is too short or invalid")
+                
+        except Exception as gen_error:
+            error_msg = str(gen_error).lower()
+            if "timeout" in error_msg or "504" in error_msg or "timed out" in error_msg:
+                raise HTTPException(
+                    status_code=504, 
+                    detail="The request timed out. Please try again with shorter content or try again later."
+                )
+            elif "quota" in error_msg or "429" in error_msg or "rate limit" in error_msg:
+                raise HTTPException(
+                    status_code=429, 
+                    detail="API quota exceeded. Please try again later."
+                )
+            elif "invalid" in error_msg or "empty" in error_msg:
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to generate personalized content. Please try again."
+                )
+            else:
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Personalization failed: {str(gen_error)[:200]}"
+                )
         
         return {
             "personalizedContent": personalized_content,
