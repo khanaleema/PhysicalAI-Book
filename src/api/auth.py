@@ -6,6 +6,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta
 import jwt
+import json
 import os
 from src.core.database import Database
 

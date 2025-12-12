@@ -9,16 +9,28 @@ export default function ChapterPersonalize() {
 
   useEffect(() => {
     // Check if we're on a chapter page (docs page)
+    // Handle both with and without baseUrl
     const path = location.pathname;
-    const isDocsPage = path.startsWith('/docs/') && 
-                       path !== '/docs/preface' &&
-                       !path.endsWith('/index') &&
-                       path !== '/docs/';
+    const baseUrl = '/PhysicalAI-Book/';
+    
+    // Remove baseUrl if present
+    let normalizedPath = path;
+    if (path.startsWith(baseUrl)) {
+      normalizedPath = path.replace(baseUrl, '/');
+    }
+    
+    const isDocsPage = normalizedPath.startsWith('/docs/') && 
+                       normalizedPath !== '/docs/preface' &&
+                       normalizedPath !== '/docs/preface/' &&
+                       !normalizedPath.endsWith('/index') &&
+                       !normalizedPath.endsWith('/index/') &&
+                       normalizedPath !== '/docs/' &&
+                       normalizedPath !== '/docs';
     
     setIsChapterPage(isDocsPage);
     
     if (isDocsPage) {
-      const pathWithoutPrefix = path.replace('/docs/', '').replace(/\/$/, '');
+      const pathWithoutPrefix = normalizedPath.replace('/docs/', '').replace(/\/$/, '');
       setChapterPath(pathWithoutPrefix);
     }
   }, [location.pathname]);

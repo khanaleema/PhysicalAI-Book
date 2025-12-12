@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '@theme/Layout';
 import { useHistory } from '@docusaurus/router';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './auth.module.css';
 
 interface BackgroundInfo {
@@ -28,6 +29,7 @@ export default function Profile() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const history = useHistory();
+  const baseUrl = useBaseUrl('/');
 
   const programmingLanguagesOptions = [
     'Python', 'C++', 'JavaScript/TypeScript', 'Java', 'ROS 2', 
@@ -84,7 +86,8 @@ export default function Profile() {
       
       setTimeout(() => {
         setSuccess('');
-        history.push('/');
+        // Navigate to docs/preface with baseUrl
+        window.location.href = `${baseUrl}docs/preface/`;
       }, 2000);
     } catch (err) {
       setError('Failed to update profile. Please try again.');
@@ -239,7 +242,7 @@ export default function Profile() {
             <div className={styles.settingsFooter}>
               <button 
                 type="button" 
-                onClick={() => history.push('/')} 
+                onClick={() => window.location.href = `${baseUrl}docs/preface/`} 
                 className={styles.cancelButton}
                 disabled={loading}
               >

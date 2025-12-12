@@ -93,21 +93,39 @@ export default function PersonalizeButton({
     }
   };
 
+  // Check if user is logged in
+  const isLoggedIn = typeof window !== 'undefined' && localStorage.getItem('user') !== null;
+
   return (
     <>
-      <button
-        className={styles.personalizeButton}
-        onClick={handlePersonalize}
-        title={isPersonalized ? 'Content is personalized' : 'Personalize this chapter'}
-      >
-        <span className={styles.buttonIcon}>✨</span>
-        <span className={styles.buttonText}>
-          {isPersonalized ? 'Personalized' : 'Personalize'}
-        </span>
-        {userLevel && (
-          <span className={styles.levelBadge}>{userLevel}</span>
-        )}
-      </button>
+      <div style={{ marginBottom: '8px' }}>
+        <button
+          className={styles.personalizeButton}
+          onClick={handlePersonalize}
+          title={isPersonalized ? 'Content is personalized' : 'Personalize this chapter'}
+        >
+          <span className={styles.buttonIcon}>✨</span>
+          <span className={styles.buttonText}>
+            {isPersonalized ? 'Personalized' : 'Personalize'}
+          </span>
+          {userLevel && (
+            <span className={styles.levelBadge}>{userLevel}</span>
+          )}
+        </button>
+      </div>
+      
+      {!isLoggedIn && (
+        <div style={{ 
+          padding: '12px', 
+          background: 'var(--ifm-color-warning-contrast-background)', 
+          borderRadius: '8px',
+          marginBottom: '16px',
+          fontSize: '14px',
+          color: 'var(--ifm-color-warning-contrast-foreground)'
+        }}>
+          💡 <strong>Sign up</strong> to personalize content based on your learning level (Beginner, Intermediate, or Advanced)
+        </div>
+      )}
       
       <PersonalizeModal
         isOpen={isModalOpen}
