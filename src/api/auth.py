@@ -50,11 +50,14 @@ async def sign_up(request: SignUpRequest):
     # Check if user exists
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed")
+        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
     
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE email = %s", (request.email,))
+            # Normalize email
+            email = request.email.lower().strip()
+            
+            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
             if cur.fetchone():
                 raise HTTPException(status_code=400, detail="Email already registered")
             
@@ -68,7 +71,7 @@ async def sign_up(request: SignUpRequest):
             """, (
                 user_id,
                 request.name,
-                request.email,
+                email,
                 hashed_password,
                 json.dumps(request.background),
                 datetime.utcnow()
@@ -82,7 +85,7 @@ async def sign_up(request: SignUpRequest):
                 "user": {
                     "id": user_id,
                     "name": request.name,
-                    "email": request.email,
+                    "email": email,
                     "background": request.background
                 },
                 "token": token
@@ -90,9 +93,11 @@ async def sign_up(request: SignUpRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Sign-up error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @router.post("/sign-in")
 async def sign_in(request: SignInRequest):
@@ -100,14 +105,17 @@ async def sign_in(request: SignInRequest):
     
     conn = db._get_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed")
+        raise HTTPException(status_code=500, detail="Database connection failed. Please try again later.")
     
     try:
         with conn.cursor() as cur:
+            # Normalize email
+            email = request.email.lower().strip()
+            
             cur.execute("""
                 SELECT id, name, email, password, background 
                 FROM users WHERE email = %s
-            """, (request.email,))
+            """, (email,))
             user = cur.fetchone()
             
             if not user or not verify_password(request.password, user[3]):
@@ -128,9 +136,11 @@ async def sign_in(request: SignInRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Sign-in error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sign in: {str(e)}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @router.get("/me")
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):

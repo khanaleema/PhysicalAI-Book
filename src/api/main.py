@@ -8,7 +8,13 @@ from src.models.schemas import UserQuery, ChatbotResponse
 from src.core.rag_pipeline import RAGPipeline, LLMProvider
 from src.data.ingestion import VectorDBClient
 from src.core.database import Database
-from src.api.simple_auth import router as auth_router
+# Try to use database auth, fallback to simple_auth if database fails
+try:
+    from src.api.auth import router as auth_router
+    print("✅ Using database-based authentication")
+except Exception as e:
+    print(f"⚠️ Database auth failed, using simple auth: {e}")
+    from src.api.simple_auth import router as auth_router
 from dotenv import load_dotenv
 
 load_dotenv()

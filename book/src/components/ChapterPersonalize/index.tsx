@@ -36,25 +36,41 @@ export default function ChapterPersonalize() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!isChapterPage) return;
+    if (!isChapterPage || !chapterPath) return;
 
-    const articleElement = document.querySelector('article');
-    if (!articleElement) return;
-
-    // Check if button already exists
-    const existingButton = articleElement.querySelector('[data-personalize-button]');
-    if (existingButton) return;
-
-    // Wait for content to load
-    const checkContent = setInterval(() => {
-      const article = document.querySelector('article');
-      if (article && article.children.length > 0) {
-        clearInterval(checkContent);
-        injectPersonalizeButton(article, chapterPath);
+    // Use MutationObserver to watch for article element
+    const observer = new MutationObserver(() => {
+      const articleElement = document.querySelector('article');
+      if (articleElement) {
+        // Check if button already exists
+        const existingButton = articleElement.querySelector('[data-personalize-button]');
+        if (!existingButton && articleElement.children.length > 0) {
+          // Small delay to ensure content is fully rendered
+          setTimeout(() => {
+            injectPersonalizeButton(articleElement, chapterPath);
+          }, 300);
+        }
       }
-    }, 100);
+    });
 
-    return () => clearInterval(checkContent);
+    // Start observing
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Also try immediately
+    const articleElement = document.querySelector('article');
+    if (articleElement && articleElement.children.length > 0) {
+      const existingButton = articleElement.querySelector('[data-personalize-button]');
+      if (!existingButton) {
+        setTimeout(() => {
+          injectPersonalizeButton(articleElement, chapterPath);
+        }, 500);
+      }
+    }
+
+    return () => observer.disconnect();
   }, [isChapterPage, chapterPath]);
 
   return null;
@@ -62,30 +78,50 @@ export default function ChapterPersonalize() {
 
 function injectPersonalizeButton(articleElement: Element, chapterPath: string) {
   // Check again if button exists
-  if (articleElement.querySelector('[data-personalize-button]')) return;
+  if (articleElement.querySelector('[data-personalize-button]')) {
+    return;
+  }
 
   // Create container for button
   const buttonContainer = document.createElement('div');
   buttonContainer.setAttribute('data-personalize-button', 'true');
+  buttonContainer.setAttribute('id', 'personalize-button-container');
   buttonContainer.style.cssText = `
     margin-bottom: 24px;
+    margin-top: 16px;
     padding: 16px;
     background: var(--ifm-color-emphasis-100);
     border-radius: 8px;
     border: 1px solid var(--ifm-color-emphasis-200);
+    width: 100%;
+    box-sizing: border-box;
   `;
 
   // Create React root
   const root = document.createElement('div');
   buttonContainer.appendChild(root);
 
-  // Insert at the beginning of article (after any existing header elements)
+  // Find the first content element (skip header if exists)
+  let insertPoint: Node | null = null;
   const firstChild = articleElement.firstElementChild;
-  if (firstChild && firstChild.tagName === 'HEADER') {
-    // Insert after header
-    articleElement.insertBefore(buttonContainer, firstChild.nextSibling);
+  
+  if (firstChild) {
+    // If first child is header, insert after it
+    if (firstChild.tagName === 'HEADER' || firstChild.classList.contains('theme-doc-header')) {
+      insertPoint = firstChild.nextSibling;
+    } else {
+      // Otherwise insert at the very beginning
+      insertPoint = firstChild;
+    }
   } else {
-    // Insert at the beginning
+    // No children, just append
+    insertPoint = null;
+  }
+
+  // Insert the button container
+  if (insertPoint) {
+    articleElement.insertBefore(buttonContainer, insertPoint);
+  } else {
     articleElement.insertBefore(buttonContainer, articleElement.firstChild);
   }
 
@@ -93,19 +129,33 @@ function injectPersonalizeButton(articleElement: Element, chapterPath: string) {
   const content = articleElement.innerText || articleElement.textContent || '';
 
   // Render button using React
-  import('react-dom/client').then(({ createRoot }) => {
+  Promise.all([
+    import('react'),
+    import('react-dom/client')
+  ]).then(([ReactModule, { createRoot }]) => {
+    const React = ReactModule.default || ReactModule;
     const reactRoot = createRoot(root);
     reactRoot.render(
-      <PersonalizeButton
-        chapterPath={chapterPath}
-        content={content}
-        onPersonalize={(personalizedContent) => {
+      React.createElement(PersonalizeButton, {
+        chapterPath: chapterPath,
+        content: content,
+        onPersonalize: (personalizedContent: string) => {
           localStorage.setItem(`personalized_${chapterPath}`, personalizedContent);
           // Reload to show personalized content
           window.location.reload();
-        }}
-      />
+        }
+      })
     );
+  }).catch((error) => {
+    console.error('Error rendering PersonalizeButton:', error);
+    // Fallback: show a simple button
+    root.innerHTML = `
+      <button onclick="alert('Please refresh the page to enable personalization')" 
+              style="padding: 10px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                     color: white; border: none; border-radius: 8px; cursor: pointer;">
+        ✨ Personalize
+      </button>
+    `;
   });
 }
 
