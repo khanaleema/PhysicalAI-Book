@@ -150,12 +150,15 @@ function injectPersonalizeButton(articleElement: Element, chapterPath: string) {
     );
   }).catch((error) => {
     console.error('Error rendering PersonalizeButton:', error);
-    // Fallback: show a simple button
+    // Fallback: show a simple button matching the theme
     root.innerHTML = `
       <button onclick="alert('Please refresh the page to enable personalization')" 
-              style="padding: 10px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                     color: white; border: none; border-radius: 8px; cursor: pointer;">
-        ✨ Personalize
+              style="display: inline-flex; align-items: center; gap: 10px; padding: 12px 20px; 
+                     background: rgba(30, 30, 30, 0.9); color: #f0f0f0; border: 1px solid rgba(255, 255, 255, 0.1); 
+                     border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600;
+                     transition: all 0.3s ease;">
+        <span>✨</span>
+        <span>Personalize for Me</span>
       </button>
     `;
   });
