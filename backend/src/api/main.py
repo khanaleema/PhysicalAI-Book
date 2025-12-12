@@ -261,6 +261,7 @@ def root():
         "endpoints": {
             "health": "/health",
             "query": "/query",
+            "translate": "/translate",
             "auth": "/auth"
         }
     }

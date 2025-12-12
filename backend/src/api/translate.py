@@ -17,7 +17,7 @@ class TranslateRequest(BaseModel):
     class Config:
         populate_by_name = True  # Allow both field name and alias
 
-@router.post("")
+@router.post("/")
 def translate_content(request: TranslateRequest):
     """Translate content to target language while preserving markdown formatting."""
     try:
