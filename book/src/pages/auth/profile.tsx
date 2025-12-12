@@ -94,6 +94,30 @@ export default function Profile() {
       });
 
       if (!response.ok) {
+        // If 503 or database error, fallback to localStorage only
+        if (response.status === 503 || response.status === 500) {
+          console.log('⚠️ Database unavailable, updating localStorage only');
+          // Update localStorage directly
+          const updatedUser = {
+            ...user,
+            name: formData.name,
+            background: background
+          };
+          
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          localStorage.setItem('userBackground', JSON.stringify(background));
+          
+          setUser(updatedUser);
+          setSuccess('Profile updated successfully! (Saved locally)');
+          
+          setTimeout(() => {
+            setSuccess('');
+            // Navigate to docs/preface - use full URL
+            window.location.href = 'https://khanaleema.github.io/PhysicalAI-Book/docs/preface/';
+          }, 1500);
+          return;
+        }
+        
         const errorData = await response.json().catch(() => ({ detail: 'Failed to update profile' }));
         throw new Error(errorData.detail || 'Failed to update profile');
       }
@@ -103,21 +127,21 @@ export default function Profile() {
       // Update localStorage with new data
       const updatedUser = {
         ...user,
-        name: updatedUserData.name,
-        background: updatedUserData.background
+        name: updatedUserData.name || formData.name,
+        background: updatedUserData.background || background
       };
       
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      localStorage.setItem('userBackground', JSON.stringify(updatedUserData.background));
+      localStorage.setItem('userBackground', JSON.stringify(updatedUserData.background || background));
       
       setUser(updatedUser);
       setSuccess('Profile updated successfully!');
       
       setTimeout(() => {
         setSuccess('');
-        // Navigate to docs/preface with baseUrl
-        window.location.href = `${baseUrl}docs/preface/`;
-      }, 2000);
+        // Navigate to docs/preface - use full URL
+        window.location.href = 'https://khanaleema.github.io/PhysicalAI-Book/docs/preface/';
+      }, 1500);
     } catch (err: any) {
       setError(err.message || 'Failed to update profile. Please try again.');
     } finally {
@@ -271,7 +295,7 @@ export default function Profile() {
             <div className={styles.settingsFooter}>
               <button 
                 type="button" 
-                onClick={() => window.location.href = `${baseUrl}docs/preface/`} 
+                onClick={() => window.location.href = 'https://khanaleema.github.io/PhysicalAI-Book/docs/preface/'} 
                 className={styles.cancelButton}
                 disabled={loading}
               >
