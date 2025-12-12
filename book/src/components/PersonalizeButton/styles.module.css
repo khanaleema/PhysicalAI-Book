@@ -66,3 +66,34 @@
   letter-spacing: 0.5px;
 }
 
+.revertButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: rgba(200, 200, 200, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.revertButton:hover {
+  background: rgba(220, 220, 220, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.revertButton:active {
+  transform: translateY(0);
+}
+
+.personalizeButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
