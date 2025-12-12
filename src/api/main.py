@@ -210,26 +210,35 @@ async def personalize_content(request: PersonalizeRequest):
         genai.configure(api_key=gemini_api_key)
         
         # Try multiple model names in order of preference
-        model_names = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
+        # gemini-2.5-flash is the primary model
+        model_names = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"]
         model = None
         model_name_used = None
         
         for model_name in model_names:
             try:
                 test_model = genai.GenerativeModel(model_name)
-                # Quick test to verify model works
-                test_model.generate_content("test", generation_config={"max_output_tokens": 1})
+                # Quick test to verify model works (skip if quota exceeded)
+                try:
+                    test_model.generate_content("test", generation_config={"max_output_tokens": 1})
+                except Exception as test_error:
+                    error_str = str(test_error).lower()
+                    if "429" in error_str or "quota" in error_str:
+                        # Quota issue, but model name is valid - use it anyway
+                        model = test_model
+                        model_name_used = model_name
+                        break
+                    else:
+                        # Other error, try next model
+                        continue
+                
+                # If we get here, model works!
                 model = test_model
                 model_name_used = model_name
                 break
             except Exception as e:
                 error_str = str(e).lower()
-                if "429" in error_str or "quota" in error_str:
-                    # Quota issue, but model name is valid - use it anyway
-                    model = test_model
-                    model_name_used = model_name
-                    break
-                elif "404" in error_str or "not found" in error_str:
+                if "404" in error_str or "not found" in error_str:
                     # Model doesn't exist, try next
                     continue
                 else:
@@ -237,9 +246,9 @@ async def personalize_content(request: PersonalizeRequest):
                     continue
         
         if model is None:
-            # Fallback to gemini-1.5-flash if all else fails
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            model_name_used = "gemini-1.5-flash"
+            # Fallback to gemini-2.5-flash if all else fails
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            model_name_used = "gemini-2.5-flash"
         
         # Simplified, shorter prompt to reduce processing time
         prompt = f"""Personalize this content for {level_info['name']} level learners.
@@ -445,26 +454,35 @@ async def translate_content(request: TranslateRequest):
         genai.configure(api_key=gemini_api_key)
         
         # Try multiple model names in order of preference
-        model_names = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
+        # gemini-2.5-flash is the primary model
+        model_names = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"]
         model = None
         model_name_used = None
         
         for model_name in model_names:
             try:
                 test_model = genai.GenerativeModel(model_name)
-                # Quick test to verify model works
-                test_model.generate_content("test", generation_config={"max_output_tokens": 1})
+                # Quick test to verify model works (skip if quota exceeded)
+                try:
+                    test_model.generate_content("test", generation_config={"max_output_tokens": 1})
+                except Exception as test_error:
+                    error_str = str(test_error).lower()
+                    if "429" in error_str or "quota" in error_str:
+                        # Quota issue, but model name is valid - use it anyway
+                        model = test_model
+                        model_name_used = model_name
+                        break
+                    else:
+                        # Other error, try next model
+                        continue
+                
+                # If we get here, model works!
                 model = test_model
                 model_name_used = model_name
                 break
             except Exception as e:
                 error_str = str(e).lower()
-                if "429" in error_str or "quota" in error_str:
-                    # Quota issue, but model name is valid - use it anyway
-                    model = test_model
-                    model_name_used = model_name
-                    break
-                elif "404" in error_str or "not found" in error_str:
+                if "404" in error_str or "not found" in error_str:
                     # Model doesn't exist, try next
                     continue
                 else:
@@ -472,9 +490,9 @@ async def translate_content(request: TranslateRequest):
                     continue
         
         if model is None:
-            # Fallback to gemini-1.5-flash if all else fails
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            model_name_used = "gemini-1.5-flash"
+            # Fallback to gemini-2.5-flash if all else fails
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            model_name_used = "gemini-2.5-flash"
         
         prompt = f"""You are an expert translator specializing in translating technical and educational content from English to {target_lang_name}.
 
