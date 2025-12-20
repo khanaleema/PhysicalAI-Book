@@ -1,51 +1,94 @@
 # Prompt History
 
-This directory contains all prompts used during the development of Physical AI Book project.
+This directory contains all prompts used during the development of Physical AI Book project, organized by component area and following SpecKit format.
 
 ## Structure
 
-Each prompt is organized by feature/component area:
+```
+history/prompts/
+├── backend/          # Backend API endpoints and services
+├── frontend/         # Frontend React components and pages
+├── general/          # General bug fixes and integrations
+└── README.md         # This file
+```
 
-- `001-textbook-qa/` - Initial RAG chatbot implementation
-- `002-backend-auth/` - User authentication system
-- `003-backend-personalization/` - Content personalization endpoint
-- `004-backend-translation/` - Translation endpoint
-- `005-backend-quiz/` - Quiz generation endpoint
-- `006-backend-evaluation/` - Content evaluation endpoint
-- `007-backend-database/` - Database connection fixes
-- `008-backend-errors/` - Error handling improvements
-- `009-frontend-personalize/` - Personalize button component
-- `010-frontend-chapter/` - Chapter page integration
-- `011-frontend-auth/` - Authentication pages
-- `012-frontend-ui/` - UI styling and fixes
-- `013-frontend-ui/` - UI theme matching
-- `014-general/` - General bug fixes
-- `015-general/` - Skill integrations
+## Prompt File Format
 
-## Prompt File Naming
+All prompts follow the SpecKit format with frontmatter metadata:
 
-Format: `{sequence}-{description}.{stage}.prompt.md`
+```yaml
+---
+id: 001
+title: Feature Name
+stage: green
+date: 2025-12-12
+surface: agent
+model: gemini-2.5-flash
+feature: feature-name
+branch: main
+user: user
+command: /sp.implement description of what to implement
+labels: ["tag1", "tag2"]
+links:
+  spec: specs/xxx/spec.md (or null)
+  plan: specs/xxx/plan.md (or null)
+  tasks: specs/xxx/tasks.md (or null)
+  adr: null
+  pr: null
+files:
+  - path/to/file1
+  - path/to/file2
+tests: []
+---
+```
 
-- `sequence`: 3-digit sequential number
-- `description`: Brief description in kebab-case
-- `stage`: implementation, spec, plan, tasks, green, etc.
+## Command Format
 
-## Metadata Format
+All prompts use SpecKit commands:
+- `/sp.specify` - Create feature specification
+- `/sp.plan` - Create implementation plan
+- `/sp.tasks` - Generate task list
+- `/sp.implement` - Execute implementation
+- `/sp.checklist` - Create checklists
+- `/sp.analyze` - Analyze artifacts
 
-Each prompt file includes frontmatter with:
-- `id`: Unique identifier
-- `title`: Human-readable title
-- `stage`: Development stage
-- `date_iso`: ISO date (YYYY-MM-DD)
-- `model`: AI model used
-- `feature`: Feature identifier
-- `branch`: Git branch
-- `command`: Original user command
-- `labels`: Tags for categorization
-- `files_yaml`: List of files modified/created
-- `tests_yaml`: List of tests
+## Categories
+
+### Backend Prompts
+- Authentication system
+- Content personalization
+- Translation endpoint
+- Quiz generation
+- Content evaluation
+- Database connection fixes
+- Error handling improvements
+
+### Frontend Prompts
+- Personalize button component
+- Chapter integration
+- Authentication pages
+- UI fixes and styling
+- Mobile responsiveness
+
+### General Prompts
+- Bug fixes
+- Skill integrations
+- Cross-cutting concerns
 
 ## Development Approach
 
-All development was done through iterative prompts and collaborative coding sessions, documenting each significant change and feature implementation.
+All development was done through iterative prompts and collaborative coding sessions using SpecKit workflow:
+1. Specification (if needed)
+2. Planning (if needed)
+3. Task generation (if needed)
+4. Implementation
+5. Testing and refinement
+
+Each prompt documents:
+- Original command
+- Implementation response
+- Outcome and impact
+- Files modified
+- Next steps
+- Reflection and learnings
 
