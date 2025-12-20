@@ -6,6 +6,7 @@ import os
 import uuid
 import time
 import asyncio
+import json
 from src.models.schemas import UserQuery, ChatbotResponse
 from src.core.rag_pipeline import RAGPipeline, LLMProvider
 from src.data.ingestion import VectorDBClient
@@ -611,3 +612,372 @@ Return ONLY the translated content with all formatting and line breaks preserved
             )
         
         raise HTTPException(status_code=500, detail=f"Translation failed: {error_detail[:500]}")
+
+
+# Quiz Generation endpoint - using quiz-generator skill
+class GenerateQuizRequest(BaseModel):
+    chapterContent: str = Field(..., description="Chapter content to generate quiz from")
+    chapterNumber: int = Field(..., description="Chapter number")
+    lessonCount: int = Field(default=4, description="Number of lessons in chapter")
+    difficulty: str = Field(default="intermediate", description="Difficulty level: beginner, intermediate, advanced")
+    
+@app.post("/generate-quiz", summary="Generate 50-question quiz using quiz-generator skill.")
+async def generate_quiz(request: GenerateQuizRequest):
+    """
+    Generate a comprehensive 50-question quiz from chapter content.
+    Based on .gemini/skills/quiz-generator skill patterns.
+    Returns quiz in Quiz component format with immediate feedback.
+    """
+    try:
+        if not request.chapterContent or len(request.chapterContent.strip()) < 100:
+            raise HTTPException(status_code=400, detail="Chapter content is too short (minimum 100 characters)")
+        
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+        
+        # Remove proxy env vars before importing Gemini
+        for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
+            os.environ.pop(key, None)
+        
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_api_key)
+        
+        # Use gemini-2.5-flash for quiz generation
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        # Truncate content if too long (keep first 8000 chars to avoid timeouts)
+        content_preview = request.chapterContent[:8000]
+        if len(request.chapterContent) > 8000:
+            content_preview += "\n\n[Content truncated for processing...]"
+        
+        quiz_prompt = f"""You are an expert educational content creator. Generate a comprehensive 50-question quiz based on the following chapter content.
+
+CRITICAL REQUIREMENTS (from quiz-generator skill):
+1. Generate exactly 50 conceptual questions (not recall/memorization)
+2. Each question must have exactly 4 options
+3. Use correctOption indices 0-3 (not 1-4)
+4. Distribute correct answers evenly: ~12-13 per index (0, 1, 2, 3)
+5. All options must be within ±3 words of each other in length
+6. Each explanation must be 100-150 words addressing:
+   - Why the correct answer is right (2-3 sentences)
+   - Why EACH distractor is wrong (1-2 sentences each)
+   - Real-world connection or misconception clarification
+7. Questions should test understanding/application, not memorization
+8. Use "source" field: "Lesson N: [Lesson Title]" format
+
+Chapter Number: {request.chapterNumber}
+Number of Lessons: {request.lessonCount}
+Difficulty: {request.difficulty}
+
+Chapter Content:
+{content_preview}
+
+Generate the quiz as a JSON array of questions. Each question must have:
+- question: string
+- options: array of 4 strings (all within ±3 words length)
+- correctOption: integer (0-3)
+- explanation: string (100-150 words addressing all 4 options)
+- source: string ("Lesson N: [Title]")
+
+Return ONLY the JSON array, no markdown formatting.
+"""
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content(
+                    quiz_prompt,
+                    generation_config={
+                        "temperature": 0.7,
+                        "max_output_tokens": 16000,  # Large output for 50 questions
+                        "top_p": 0.95,
+                    }
+                )
+                
+                quiz_text = response.text.strip()
+                
+                # Extract JSON from response (might be wrapped in markdown)
+                if "```json" in quiz_text:
+                    quiz_text = quiz_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in quiz_text:
+                    quiz_text = quiz_text.split("```")[1].split("```")[0].strip()
+                
+                import json
+                quiz_data = json.loads(quiz_text)
+                
+                # Validate structure
+                if not isinstance(quiz_data, list):
+                    raise ValueError("Quiz data must be an array")
+                
+                if len(quiz_data) != 50:
+                    raise ValueError(f"Expected 50 questions, got {len(quiz_data)}")
+                
+                # Validate each question
+                for i, q in enumerate(quiz_data):
+                    if "question" not in q or "options" not in q or "correctOption" not in q or "explanation" not in q:
+                        raise ValueError(f"Question {i+1} missing required fields")
+                    if len(q["options"]) != 4:
+                        raise ValueError(f"Question {i+1} must have exactly 4 options")
+                    if q["correctOption"] not in [0, 1, 2, 3]:
+                        raise ValueError(f"Question {i+1} correctOption must be 0-3")
+                
+                # Count distribution of correctOption
+                distribution = {0: 0, 1: 0, 2: 0, 3: 0}
+                for q in quiz_data:
+                    distribution[q["correctOption"]] += 1
+                
+                return {
+                    "success": True,
+                    "quiz": quiz_data,
+                    "metadata": {
+                        "questionCount": len(quiz_data),
+                        "chapterNumber": request.chapterNumber,
+                        "distribution": distribution,
+                        "format": "Quiz component (JSON array)"
+                    }
+                }
+                
+            except Exception as e:
+                error_detail = str(e)
+                error_lower = error_detail.lower()
+                
+                # Handle quota errors with retry
+                if '429' in error_lower or 'quota' in error_lower or 'rate limit' in error_lower:
+                    if attempt < max_retries - 1:
+                        # Extract retry delay if provided
+                        retry_delay = 30  # Default 30 seconds
+                        if 'retry in' in error_detail.lower():
+                            try:
+                                import re
+                                delay_match = re.search(r'retry in ([\d.]+)s?', error_detail.lower())
+                                if delay_match:
+                                    retry_delay = int(float(delay_match.group(1))) + 5
+                            except:
+                                pass
+                        
+                        await asyncio.sleep(retry_delay)
+                        continue
+                    else:
+                        raise HTTPException(
+                            status_code=429,
+                            detail="API quota exceeded. Please wait before retrying."
+                        )
+                
+                # Handle timeout
+                if 'timeout' in error_lower or '504' in error_lower:
+                    raise HTTPException(
+                        status_code=504,
+                        detail="Quiz generation timed out. Content might be too long."
+                    )
+                
+                # Re-raise on last attempt
+                if attempt == max_retries - 1:
+                    raise
+                
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+        
+    except HTTPException:
+        raise
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse quiz JSON: {str(e)}")
+    except Exception as e:
+        error_detail = str(e)
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {error_detail[:500]}")
+
+
+# Content Evaluation endpoint - using content-evaluation-framework skill
+class EvaluateContentRequest(BaseModel):
+    content: str = Field(..., description="Content to evaluate")
+    contentType: str = Field(default="lesson", description="Type: lesson, chapter, section")
+    targetAudience: str = Field(default="intermediate", description="Target audience level")
+    
+@app.post("/evaluate-content", summary="Evaluate content quality using content-evaluation-framework skill.")
+async def evaluate_content(request: EvaluateContentRequest):
+    """
+    Evaluate educational content quality across 6 weighted categories.
+    Based on .gemini/skills/content-evaluation-framework skill.
+    Returns comprehensive evaluation report with scores and recommendations.
+    """
+    try:
+        if not request.content or len(request.content.strip()) < 50:
+            raise HTTPException(status_code=400, detail="Content is too short (minimum 50 characters)")
+        
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+        
+        # Remove proxy env vars before importing Gemini
+        for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"]:
+            os.environ.pop(key, None)
+        
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_api_key)
+        
+        # Use gemini-2.5-flash for evaluation
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        # Truncate content if too long (keep first 6000 chars)
+        content_preview = request.content[:6000]
+        if len(request.content) > 6000:
+            content_preview += "\n\n[Content truncated for evaluation...]"
+        
+        evaluation_prompt = f"""You are an expert educational content evaluator. Evaluate the following content using the content-evaluation-framework rubric.
+
+EVALUATION CRITERIA (6 weighted categories):
+
+1. Technical Accuracy (30% weight):
+   - Code correctness, type hints, explanations accuracy
+   - Examples work as stated
+   - Technical concepts explained correctly
+
+2. Pedagogical Effectiveness (25% weight):
+   - Show-then-explain pattern followed
+   - Progressive complexity maintained
+   - Quality exercises and learning activities
+   - Concept scaffolding appropriate
+
+3. Writing Quality (20% weight):
+   - Readability (target: Flesch-Kincaid 8-10)
+   - Clear, accessible language
+   - Grade-level appropriateness
+   - Voice and tone consistent
+
+4. Structure & Organization (15% weight):
+   - Learning objectives met
+   - Logical flow and progression
+   - Appropriate length
+   - Smooth transitions
+
+5. AI-First Teaching (10% weight):
+   - Co-learning partnership demonstrated
+   - Three Roles Framework shown (AI as Teacher/Student/Co-Worker)
+   - Appropriate AI integration
+
+6. Constitution Compliance (Pass/Fail gate):
+   - Non-negotiable principles followed
+   - Must pass to proceed
+
+SCORING TIERS:
+- Excellent: 90-100%
+- Good: 75-89%
+- Needs Work: 50-74%
+- Insufficient: <50%
+
+Content Type: {request.contentType}
+Target Audience: {request.targetAudience}
+
+Content to Evaluate:
+{content_preview}
+
+Provide evaluation as JSON with this structure:
+{{
+  "constitutionCompliance": "Pass" or "Fail" (with reason),
+  "categories": {{
+    "technicalAccuracy": {{"score": 0-100, "tier": "Excellent|Good|Needs Work|Insufficient", "evidence": "specific examples", "recommendations": "actionable feedback"}},
+    "pedagogicalEffectiveness": {{"score": 0-100, "tier": "...", "evidence": "...", "recommendations": "..."}},
+    "writingQuality": {{"score": 0-100, "tier": "...", "evidence": "...", "recommendations": "..."}},
+    "structureOrganization": {{"score": 0-100, "tier": "...", "evidence": "...", "recommendations": "..."}},
+    "aiFirstTeaching": {{"score": 0-100, "tier": "...", "evidence": "...", "recommendations": "..."}}
+  }},
+  "overallScore": 0-100,
+  "overallTier": "Excellent|Good|Needs Work|Insufficient",
+  "strengths": ["list of strengths"],
+  "priorityImprovements": ["top 3-5 improvements needed"],
+  "recommendation": "Ready for publication|Needs revision|Requires major rework"
+}}
+
+Return ONLY valid JSON, no markdown formatting.
+"""
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content(
+                    evaluation_prompt,
+                    generation_config={
+                        "temperature": 0.3,  # Lower temp for more consistent evaluation
+                        "max_output_tokens": 4000,
+                        "top_p": 0.95,
+                    }
+                )
+                
+                eval_text = response.text.strip()
+                
+                # Extract JSON from response
+                if "```json" in eval_text:
+                    eval_text = eval_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in eval_text:
+                    eval_text = eval_text.split("```")[1].split("```")[0].strip()
+                
+                import json
+                evaluation_data = json.loads(eval_text)
+                
+                # Calculate weighted score
+                weights = {
+                    "technicalAccuracy": 0.30,
+                    "pedagogicalEffectiveness": 0.25,
+                    "writingQuality": 0.20,
+                    "structureOrganization": 0.15,
+                    "aiFirstTeaching": 0.10
+                }
+                
+                weighted_score = sum(
+                    evaluation_data["categories"][cat]["score"] * weights[cat]
+                    for cat in weights.keys()
+                )
+                
+                evaluation_data["calculatedWeightedScore"] = round(weighted_score, 2)
+                
+                return {
+                    "success": True,
+                    "evaluation": evaluation_data,
+                    "metadata": {
+                        "contentType": request.contentType,
+                        "targetAudience": request.targetAudience,
+                        "evaluationFramework": "content-evaluation-framework v2.1.0"
+                    }
+                }
+                
+            except Exception as e:
+                error_detail = str(e)
+                error_lower = error_detail.lower()
+                
+                # Handle quota errors with retry
+                if '429' in error_lower or 'quota' in error_lower or 'rate limit' in error_lower:
+                    if attempt < max_retries - 1:
+                        retry_delay = 30
+                        if 'retry in' in error_detail.lower():
+                            try:
+                                import re
+                                delay_match = re.search(r'retry in ([\d.]+)s?', error_detail.lower())
+                                if delay_match:
+                                    retry_delay = int(float(delay_match.group(1))) + 5
+                            except:
+                                pass
+                        await asyncio.sleep(retry_delay)
+                        continue
+                    else:
+                        raise HTTPException(
+                            status_code=429,
+                            detail="API quota exceeded. Please wait before retrying."
+                        )
+                
+                if 'timeout' in error_lower or '504' in error_lower:
+                    raise HTTPException(
+                        status_code=504,
+                        detail="Content evaluation timed out."
+                    )
+                
+                if attempt == max_retries - 1:
+                    raise
+                
+                await asyncio.sleep(2 ** attempt)
+        
+    except HTTPException:
+        raise
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse evaluation JSON: {str(e)}")
+    except Exception as e:
+        error_detail = str(e)
+        raise HTTPException(status_code=500, detail=f"Content evaluation failed: {error_detail[:500]}")
